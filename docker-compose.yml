@@ -19,7 +19,7 @@ services:
       AGENT_SOURCES: ${AGENT_SOURCES:-stockholm helsinki vantaa}
       AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-agent}
     volumes:
-      - ./stub/telemetry-init.sh:/docker-entrypoint-initdb.d/01.sh:ro
+      - ./telemetry/init.sh:/docker-entrypoint-initdb.d/01.sh:ro
     ports: ["${TELEMETRY_PORT:-5433}:5432"]
     networks: [default, stockholm_net, helsinki_net]
     healthcheck: *pg_health
