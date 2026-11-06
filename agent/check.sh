@@ -8,7 +8,7 @@ set -e
 cd "$(dirname "$0")/.."
 py=${PYTHON:-.venv/bin/python}
 [ -x "$py" ] || py=python3
-compose="docker compose -f docker-compose.yml -f agent/compose.yml"
+compose="docker compose"
 urls="http://localhost:9001 http://localhost:9002 http://localhost:9003"
 verify() { "$py" agent/verify.py "$@"; }
 now() { date -u +%Y-%m-%dT%H:%M:%SZ; }

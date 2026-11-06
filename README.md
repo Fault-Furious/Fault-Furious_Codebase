@@ -5,13 +5,17 @@ Multi-agent incident diagnosis on a real running platform. Context: `BRIEF.md`.
 ## Run it
 
 ```sh
-docker compose up -d --build   # whole platform + steady traffic
+docker compose up -d --build   # platform, telemetry DB, and three agents
 ./check.sh                     # PASS = linked span/child/log/metric for one /login
-docker compose down -v         # stop and wipe all data
+agent/check.sh stack           # DB isolation and agent convergence checks
+docker compose down            # stop services (keeps database data)
 ```
 
 Stockholm is at http://localhost:8001 and Helsinki at http://localhost:8002.
 Telemetry DB is on `localhost:5433` (user/password/db `telemetry`).
+Agents are on `http://localhost:9001` (Stockholm), `:9002` (Helsinki), and
+`:9003` (Vantaa). Each agent reads telemetry through its own read-only role and
+exchanges belief state with the other two.
 
 ## What runs
 
@@ -23,10 +27,27 @@ Telemetry DB is on `localhost:5433` (user/password/db `telemetry`).
 | `dbmon` | `vantaa` | Telemetry for `userdb`: tails Postgres's CSV log + polls `pg_stat_activity` |
 | `telemetrydb` | — | Where all telemetry lands |
 | `loadgen` | — | Fake visitors, steady browse/search/login traffic on both servers |
+| `agent-stockholm`, `agent-helsinki`, `agent-vantaa` | matching source | Mock diagnosis, cross-checking, and belief-state gossip |
 
-Networks: each app server shares a network with the databases, and the two
-servers share *only* the `nordic-peer` network. The home page calls the other
-server's `/api/online` with a `traceparent` header, so traces cross machines.
+Networks: each app server has its own database network; the servers share only
+`nordic-peer`. Agents share `nordic-agent-peer` for gossip and a separate
+network to reach the telemetry database. The home page calls the other server's
+`/api/online` with a `traceparent` header, so traces cross machines.
+
+Start an investigation on all agents with the same incident ID. For example:
+
+```sh
+for port in 9001 9002 9003; do
+  curl -s "http://localhost:$port/incident" -H 'content-type: application/json' \
+    -d '{"id":"demo-surge","scenario":"surge"}'
+done
+curl -s http://localhost:9001/state
+```
+
+Each `/state` response includes a digest; once gossip settles, all three digests
+match. The mock distinguishes the surge cause (Vantaa's `53300` connection
+refusals) from the app symptom (failed SQL spans/logs). In a network split, the
+app agents report `PEER_UNREACHABLE` while Vantaa reports a healthy database.
 
 ## Interface: what lands in the telemetry DB
 
@@ -100,7 +121,9 @@ What each fault produces (seen in testing; signals show up within about 10 secon
 | Load generator (steady fake traffic on both servers) | Done |
 | Fault 1, signup surge: `faults/signup_surge.sh` | Done and tested |
 | Fault 2, network split: `faults/split.sh` | Done and tested |
-| One read-only role per machine (stand-in until P3's lands) | Done, isolation tested |
+| One read-only role per machine | Done, isolation tested |
+| Three agent services in the default Compose stack | Done |
+| Belief merge and gossip convergence for surge, split, and quiet traffic | Done, tested |
 | `./check.sh`, the done-criterion test | Passes |
 
 P1 owns `otel.py`, `app/`, `dbmon/`, `loadgen/`, `faults/`, `docker-compose.yml` and
@@ -117,26 +140,21 @@ Services write as `telemetry_writer`, which can insert but not read. Open: a for
 `messages`, and whether `telemetry_prune()` runs on a timer.
 
 ### P4: agents
-1. Build three agents, one per machine: `stockholm`, `helsinki` and `vantaa`.
-2. Each agent logs in with its own role, for example
-   `postgresql://agent_helsinki:agent@localhost:5433/telemetry`. Inside compose, use
-   host `telemetrydb:5432` on the `default` network.
-3. Never give an agent the `telemetry` admin login, because that breaks the whole idea
-   of the project.
-4. To get test data, run a fault for about 30 seconds, reset it, and read the rows from
-   that time window. Normal traffic between faults gives you "nothing is wrong" examples.
-5. To add your service to compose, go through P1. Or run it outside Docker against port 5433.
+Three agents run in the default Compose stack. Each has a distinct `NODE_ID`, a
+private database role, and `/incident`, `/exchange`, `/state`, `/health` endpoints.
+The current `AGENT_MODE=mock` uses deterministic claims while keeping the same
+`analyse`/`evaluate` interface planned for the model implementation. See
+[`agent/README.md`](agent/README.md) for endpoint and fault-check details.
 
 ### P2: belief and merge logic
-1. Combine the agents' findings using shared clues: trace ids, timestamps, error codes
-   (`53300`, `PEER_UNREACHABLE`), and parent spans that one agent can't see but the
-   other can.
-2. These are the correct answers to test against:
-   - **Surge:** the cause is the database (Vantaa refusing connections). The symptom is
-     the app servers' failed SQL calls.
-   - **Split:** both app servers report the other unreachable. The database is clean,
-     which rules it out.
-3. For the demo, cut the link between two agents and the system must decline to answer.
+`belief.py` keys claims by normalized content hash, unions evidence IDs, and
+merges each agent's confidence through a versioned register. `agent/check.sh all`
+tests the convergence gate and the two live faults. The expected diagnosis is:
+
+- **Surge:** Vantaa's connection refusals (`53300`) explain the cause; failed SQL
+  spans and logs on Stockholm/Helsinki are the symptom.
+- **Split:** Stockholm and Helsinki report `PEER_UNREACHABLE`; Vantaa reports no
+  database connection errors.
 
 ## The whole team must decide this week
 

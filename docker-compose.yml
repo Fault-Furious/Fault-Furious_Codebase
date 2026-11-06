@@ -23,7 +23,7 @@ services:
     volumes:
       - ./telemetry/init.sh:/docker-entrypoint-initdb.d/01.sh:ro
     ports: ["${TELEMETRY_PORT:-5433}:5432"]
-    networks: [default, stockholm_net, helsinki_net]
+    networks: [default, stockholm_net, helsinki_net, agent_db]
     healthcheck: *pg_health
 
   # Vantaa
@@ -105,6 +105,69 @@ services:
       stockholm: { condition: service_healthy }
       helsinki: { condition: service_healthy }
 
+  # Belief agents read telemetry through their own row-level-security role.
+  # They gossip on agent_peer, which can be disconnected independently from
+  # the app servers' nordic-peer network during partition tests.
+  agent-stockholm:
+    build: { context: ., dockerfile: agent/Dockerfile }
+    environment:
+      NODE_ID: stockholm
+      PEERS: helsinki=http://agent-helsinki:8000,vantaa=http://agent-vantaa:8000
+      TELEMETRY_DSN: postgresql://agent_stockholm:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+      AGENT_MODE: ${AGENT_MODE:-mock}
+      GOSSIP_SECONDS: ${GOSSIP_SECONDS:-1}
+      PEER_TIMEOUT: ${PEER_TIMEOUT:-2}
+      SHARD_LIMIT: ${SHARD_LIMIT:-5000}
+      INCIDENT_WINDOW_SECONDS: ${INCIDENT_WINDOW_SECONDS:-60}
+    ports: ["${AGENT_STOCKHOLM_PORT:-9001}:8000"]
+    networks: [agent_db, agent_peer]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+
+  agent-helsinki:
+    build: { context: ., dockerfile: agent/Dockerfile }
+    environment:
+      NODE_ID: helsinki
+      PEERS: stockholm=http://agent-stockholm:8000,vantaa=http://agent-vantaa:8000
+      TELEMETRY_DSN: postgresql://agent_helsinki:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+      AGENT_MODE: ${AGENT_MODE:-mock}
+      GOSSIP_SECONDS: ${GOSSIP_SECONDS:-1}
+      PEER_TIMEOUT: ${PEER_TIMEOUT:-2}
+      SHARD_LIMIT: ${SHARD_LIMIT:-5000}
+      INCIDENT_WINDOW_SECONDS: ${INCIDENT_WINDOW_SECONDS:-60}
+    ports: ["${AGENT_HELSINKI_PORT:-9002}:8000"]
+    networks: [agent_db, agent_peer]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+
+  agent-vantaa:
+    build: { context: ., dockerfile: agent/Dockerfile }
+    environment:
+      NODE_ID: vantaa
+      PEERS: stockholm=http://agent-stockholm:8000,helsinki=http://agent-helsinki:8000
+      TELEMETRY_DSN: postgresql://agent_vantaa:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+      AGENT_MODE: ${AGENT_MODE:-mock}
+      GOSSIP_SECONDS: ${GOSSIP_SECONDS:-1}
+      PEER_TIMEOUT: ${PEER_TIMEOUT:-2}
+      SHARD_LIMIT: ${SHARD_LIMIT:-5000}
+      INCIDENT_WINDOW_SECONDS: ${INCIDENT_WINDOW_SECONDS:-60}
+    ports: ["${AGENT_VANTAA_PORT:-9003}:8000"]
+    networks: [agent_db, agent_peer]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+
 # The two app servers share no network except "peer", so disconnecting it splits
 # them while both still reach the databases.
 networks:
@@ -113,6 +176,9 @@ networks:
   helsinki_net:
   peer:
     name: ${PEER_NETWORK:-nordic-peer}
+  agent_db:
+  agent_peer:
+    name: ${AGENT_PEER_NETWORK:-nordic-agent-peer}
 
 volumes:
   userdb-data:

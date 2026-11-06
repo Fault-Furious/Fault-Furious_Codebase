@@ -27,9 +27,9 @@ failing signups 0.70.
 ## Run it
 
 ```sh
-# with the platform, in Docker (agents on 9001-9003)
-docker compose -f docker-compose.yml -f agent/compose.yml up -d --build
-docker compose -f docker-compose.yml -f agent/compose.yml down -v   # both files, or the agents stay up
+# whole platform and agents, in Docker (agents on 9001-9003)
+docker compose up -d --build
+docker compose down -v
 
 # or on your machine, no Docker; add "db" to read localhost:5433
 pip install -r agent/requirements-dev.txt
