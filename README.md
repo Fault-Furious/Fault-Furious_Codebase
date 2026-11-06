@@ -11,6 +11,10 @@ agent/check.sh stack           # DB isolation and agent convergence checks
 docker compose down            # stop services (keeps database data)
 ```
 
+For a public reviewer deployment, see [`DEPLOY.md`](DEPLOY.md). It uses a
+production Compose overlay and HTTPS reverse proxy; do not expose the database
+or agent API ports publicly.
+
 Stockholm is at http://localhost:8001 and Helsinki at http://localhost:8002.
 Telemetry DB is on `localhost:5433` (user/password/db `telemetry`).
 Agents are on `http://localhost:9001` (Stockholm), `:9002` (Helsinki), and

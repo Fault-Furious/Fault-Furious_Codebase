@@ -1,0 +1,61 @@
+# Public deployment overlay. Only Caddy publishes ports; databases and agent
+# APIs stay private to the server. Set values in an untracked .env file.
+services:
+  telemetrydb:
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${TELEMETRY_PASSWORD:?set a strong TELEMETRY_PASSWORD in .env}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:?set a strong AGENT_DB_PASSWORD in .env}
+      TELEMETRY_WRITER_PASSWORD: ${TELEMETRY_WRITER_PASSWORD:?set a strong TELEMETRY_WRITER_PASSWORD in .env}
+    volumes:
+      - telemetry-data:/var/lib/postgresql/data
+
+  userdb:
+    environment:
+      POSTGRES_PASSWORD: ${USERDB_ADMIN_PASSWORD:?set a strong USERDB_ADMIN_PASSWORD in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set a strong APP_DB_PASSWORD in .env}
+
+  stockholm:
+    ports: !reset []
+
+  helsinki:
+    ports: !reset []
+
+  agent-stockholm:
+    ports: !reset []
+    environment:
+      TELEMETRY_DSN: postgresql://agent_stockholm:${AGENT_DB_PASSWORD:?set a strong AGENT_DB_PASSWORD in .env}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+
+  agent-helsinki:
+    ports: !reset []
+    environment:
+      TELEMETRY_DSN: postgresql://agent_helsinki:${AGENT_DB_PASSWORD:?set a strong AGENT_DB_PASSWORD in .env}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+
+  agent-vantaa:
+    ports: !reset []
+    environment:
+      TELEMETRY_DSN: postgresql://agent_vantaa:${AGENT_DB_PASSWORD:?set a strong AGENT_DB_PASSWORD in .env}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      STOCKHOLM_DOMAIN: ${STOCKHOLM_DOMAIN:?set STOCKHOLM_DOMAIN in .env}
+      HELSINKI_DOMAIN: ${HELSINKI_DOMAIN:?set HELSINKI_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks: [stockholm_net, helsinki_net]
+    depends_on:
+      stockholm: { condition: service_healthy }
+      helsinki: { condition: service_healthy }
+
+volumes:
+  telemetry-data:
+  caddy-data:
+  caddy-config:
