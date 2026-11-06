@@ -56,7 +56,7 @@ logs     id, ts, severity, source, trace_id, message, code
 | `db.connections` / `.active` / `.max` | vantaa | count, every second |
 | `db.connections.refused` | vantaa | count of 53300s in the last second |
 
-Per-agent roles (stub, see P3): `agent_stockholm`, `agent_helsinki`, `agent_vantaa`,
+Per-agent roles (from `telemetry/init.sh`, P3): `agent_stockholm`, `agent_helsinki`, `agent_vantaa`,
 password `agent`. Row-level security limits each role to its own `source`:
 
 ```sh
@@ -112,14 +112,9 @@ P1 owns `otel.py`, `app/`, `dbmon/`, `loadgen/`, `faults/`, `docker-compose.yml`
 `./check.sh`. It should print `PASS`.
 
 ### P3: telemetry schema and roles
-1. Replace the stand-in file `stub/telemetry-init.sh` with your own schema and roles.
-2. Keep the table and column names above the same. If you must rename anything, tell P1
-   first, because `otel.py` writes to them.
-3. Decide these:
-   - Add a real `trace_id` column to `metrics`? Today it sits inside `attrs`.
-   - Add a forum column to `messages`? Without it, every forum page shows the same messages.
-   - Data clean-up: traffic adds roughly 30 rows a second.
-4. Keep the isolation rule true: each agent role can see only its own machine's rows.
+Done: `telemetry/init.sh` (schema, roles, views, `telemetry_prune`) and `telemetry/check.sh`.
+Services write as `telemetry_writer`, which can insert but not read. Open: a forum column on
+`messages`, and whether `telemetry_prune()` runs on a timer.
 
 ### P4: agents
 1. Build three agents, one per machine: `stockholm`, `helsinki` and `vantaa`.

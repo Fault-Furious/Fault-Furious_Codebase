@@ -1,5 +1,6 @@
 # Every value here is a default; override with env vars or a .env file.
-x-telemetry-dsn: &telemetry_dsn postgresql://${TELEMETRY_USER:-telemetry}:${TELEMETRY_PASSWORD:-telemetry}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+# services write as telemetry_writer (insert only, see telemetry/init.sh), never the owner
+x-telemetry-dsn: &telemetry_dsn postgresql://telemetry_writer:${TELEMETRY_WRITER_PASSWORD:-writer}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
 x-pg-health: &pg_health
   test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
   interval: 2s
@@ -18,6 +19,7 @@ services:
       POSTGRES_DB: ${TELEMETRY_DB:-telemetry}
       AGENT_SOURCES: ${AGENT_SOURCES:-stockholm helsinki vantaa}
       AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-agent}
+      TELEMETRY_WRITER_PASSWORD: ${TELEMETRY_WRITER_PASSWORD:-writer}
     volumes:
       - ./telemetry/init.sh:/docker-entrypoint-initdb.d/01.sh:ro
     ports: ["${TELEMETRY_PORT:-5433}:5432"]
