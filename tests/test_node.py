@@ -79,7 +79,8 @@ def test_claim_texts_are_already_normalized():
 def test_health():
     r = TestClient(make_app(Node("vantaa"))).get("/health")
     assert r.status_code == 200
-    assert r.json() == {"node": "vantaa", "mode": "mock", "ok": True, "incident": None, "db": None}
+    assert r.json() == {"node": "vantaa", "mode": "mock", "ok": True, "incident": None, "db": None,
+                        "model": None}
 
 
 @pytest.mark.parametrize("scenario,node", list(itertools.product(EXPECTED, NODES)))

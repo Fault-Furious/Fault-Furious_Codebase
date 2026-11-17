@@ -14,6 +14,7 @@ import sys
 import threading
 import time
 import urllib.request
+from collections import Counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from typing import Literal
@@ -22,6 +23,7 @@ import psycopg
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+import llm
 import mock
 from belief import BeliefState, Claim
 from shard import get_shard, sources
@@ -31,6 +33,7 @@ PEERS = os.environ.get("PEERS", "")  # "helsinki=http://agent-helsinki:8000,vant
 DSN = os.environ.get("TELEMETRY_DSN", "")  # empty = no DB, mock answers without evidence
 MODE = os.environ.get("AGENT_MODE", "mock")
 GOSSIP_SECONDS = float(os.environ.get("GOSSIP_SECONDS", "1"))  # 0 = only answer, never push
+MODEL_RETRY_SECONDS = float(os.environ.get("MODEL_RETRY_SECONDS", "5"))
 PEER_TIMEOUT = float(os.environ.get("PEER_TIMEOUT", "2"))
 SHARD_LIMIT = int(os.environ.get("SHARD_LIMIT", "5000"))
 WINDOW_SECONDS = int(os.environ.get("INCIDENT_WINDOW_SECONDS", "60"))
@@ -41,9 +44,10 @@ BAD_STATE = (KeyError, TypeError, ValueError, AttributeError)
 
 
 def make_agent(node, mode, scenario):
-    # the real agent goes here later, with the same analyse/evaluate methods
     if mode == "mock":
         return mock.MockAgent(node, scenario)
+    if mode == "llm":
+        return llm.LlmAgent(node)  # finds the fault itself, a scenario hint means nothing to it
     raise ValueError(f"unknown AGENT_MODE {mode!r}")
 
 
@@ -87,7 +91,11 @@ class Node:
         self.dsn = dsn
         self.mode = mode
         self.lock = threading.Lock()
+        self.joining = threading.Lock()
         self.unreachable = set()
+        # opinions being worked out right now, per incident, so a check still running
+        # for the old one neither counts for the new one nor drives it below 0
+        self.busy = Counter()
         self._reset(None, None, make_agent(node_id, mode, "none"), None)
 
     @classmethod
@@ -110,21 +118,58 @@ class Node:
         self.version += 1
         self.state.add_claim(Claim.create(text, evidence_ids, self.id, confidence, self.version))
 
+    def _todo(self):
+        return [c for c in self.state.claims.values()
+                if self.id not in c.confidence and c.claim_id not in self.scored]
+
     def cross_check(self):
-        """Give our own confidence to claims other nodes made that we haven't scored yet."""
+        """Give our own confidence to claims other nodes made that we haven't scored yet.
+        False if the model was down, the claims it missed get asked again next time."""
         with self.lock:
             incident, agent, shard = self.incident, self.agent, self.shard
-            todo = [c.text for c in self.state.claims.values()
-                    if self.id not in c.confidence and c.claim_id not in self.scored]
+            todo = [c.text for c in self._todo()]
             self.scored.update(Claim.create(text).claim_id for text in todo)
-        # no lock here, a real model can take seconds per claim and gossip has to go on
-        opinions = [(text, agent.evaluate(text, shard)) for text in todo]
+            self.busy[incident] += 1
+        opinions, ok = [], True
+        try:
+            # no lock here, a real model can take seconds per claim and gossip has to go on
+            for i, text in enumerate(todo):
+                if self.incident != incident:
+                    break  # moved on, don't keep the shared model busy for nothing
+                try:
+                    opinions.append((text, agent.evaluate(text, shard)))
+                except llm.ModelDown as e:
+                    print(f"{self.id}: model down, will score {len(todo) - i} claims later ({e})",
+                          file=sys.stderr, flush=True)
+                    ok = False
+                    break
+        finally:
+            with self.lock:
+                self.busy[incident] -= 1
+                if self.incident == incident:
+                    self.scored.difference_update(Claim.create(t).claim_id for t in todo[len(opinions):])
+                    for text, confidence in opinions:
+                        if confidence is not None:
+                            self._add(text, confidence, [])
+        return ok
+
+    def reanalyse(self):
+        """The model was down when the incident started, try our own claims again."""
         with self.lock:
-            if self.incident != incident:
-                return
-            for text, confidence in opinions:
-                if confidence is not None:
-                    self._add(text, confidence, [])
+            incident, agent, shard = self.incident, self.agent, self.shard
+            if incident is None or not getattr(agent, "failed", False):
+                return True
+            self.busy[incident] += 1  # agent.failed goes False before our claims are in
+        hypotheses = []
+        try:
+            hypotheses = agent.analyse(shard)
+        finally:
+            with self.lock:
+                self.busy[incident] -= 1
+                if self.incident == incident and self.agent is agent:
+                    for h in hypotheses:
+                        self._add(h["text"], h["confidence"], h["evidence_ids"])
+        return not agent.failed
 
     def read_shard(self, start, end):
         if not self.dsn:
@@ -137,6 +182,11 @@ class Node:
         return shard
 
     def start_incident(self, incident, start, end, scenario=None):
+        # a gossip join that comes in while we analyse gets a 409, not a second analysis
+        with self.joining:
+            return self._start(incident, start, end, scenario)
+
+    def _start(self, incident, start, end, scenario):
         # read and analyse outside the lock, gossip keeps going meanwhile
         shard = self.read_shard(start, end)
         agent = make_agent(self.id, self.mode, scenario)
@@ -148,11 +198,12 @@ class Node:
             self.window, self.agent, self.shard = window, agent, shard
             for h in hypotheses:
                 self._add(h["text"], h["confidence"], h["evidence_ids"])
-        self.cross_check()
+        # opinions on other nodes' claims come from the check thread, a model takes a while
         return {
             "node": self.id,
             "incident": incident,
             "scenario": getattr(agent, "scenario", None),  # what the mock went with
+            "error": getattr(agent, "error", None),  # model down, so no claims of our own
             "claims": hypotheses,
             "records": {t: len(rows) for t, rows in shard.items()} if shard is not None else None,
             "sources": sources(shard) if shard is not None else None,
@@ -165,8 +216,17 @@ class Node:
         if self.incident is None and window:
             if window.get("scenario") not in SCENARIOS:
                 raise ValueError(f"unknown scenario {window.get('scenario')!r}")
-            self.start_incident(incident, utc(datetime.fromisoformat(window["start"])),
-                                utc(datetime.fromisoformat(window["end"])), window.get("scenario"))
+            start = utc(datetime.fromisoformat(window["start"]))
+            end = utc(datetime.fromisoformat(window["end"]))
+            # a model can outlast the peer's timeout, so the peer asks again while we
+            # still read our rows. answer that with a 409 instead of a second analysis
+            if not self.joining.acquire(blocking=False):
+                raise WrongIncident(f"{self.id} is busy starting an incident")
+            try:
+                if self.incident is None:  # an /incident may have beaten us to it
+                    self._start(incident, start, end, window.get("scenario"))
+            finally:
+                self.joining.release()
         with self.lock:
             if incident != self.incident:
                 raise WrongIncident(f"{self.id} is on {self.incident!r}, not {incident!r}")
@@ -185,6 +245,10 @@ class Node:
                 "digest": self.state.digest(),
                 "state": self.state.to_dict(),
                 "peers": dict(self.last_seen),
+                # work we still owe: claims to score, checks running, our own analysis if it failed
+                "pending": (len(self._todo()) + self.busy[self.incident]
+                            + bool(getattr(self.agent, "failed", False))),
+                "error": getattr(self.agent, "error", None),
             }
 
     def gossip_once(self):
@@ -211,10 +275,21 @@ class Node:
         while True:
             time.sleep(every)
             try:
-                self.cross_check()
                 self.gossip_once()
             except Exception as e:  # a dead gossip thread would look like a partition
                 print(f"{self.id}: gossip round failed ({e!r})", file=sys.stderr, flush=True)
+
+    def check_forever(self, every):
+        # own thread, so a slow or hanging model never holds up gossip
+        while True:
+            time.sleep(every)
+            try:
+                ok = self.reanalyse() and self.cross_check()
+            except Exception as e:
+                print(f"{self.id}: check round failed ({e!r})", file=sys.stderr, flush=True)
+                ok = False
+            if not ok:
+                time.sleep(MODEL_RETRY_SECONDS)
 
     def db_ok(self):
         if not self.dsn:
@@ -247,17 +322,19 @@ def make_app(node):
     async def lifespan(app):
         if not node.id:
             raise RuntimeError("NODE_ID is not set")
-        if GOSSIP_SECONDS > 0:  # also runs the cross-checks, so even a node without peers needs it
+        if GOSSIP_SECONDS > 0:  # the cross-checks too, so even a node without peers needs it
             threading.Thread(target=node.gossip_forever, args=(GOSSIP_SECONDS,),
                              daemon=True, name="gossip").start()
+            threading.Thread(target=node.check_forever, args=(GOSSIP_SECONDS,),
+                             daemon=True, name="check").start()
         yield
 
     app = FastAPI(lifespan=lifespan)
 
     @app.get("/health")
     def health():
-        return {"node": node.id, "mode": node.mode, "ok": True,
-                "incident": node.incident, "db": node.db_ok()}
+        return {"node": node.id, "mode": node.mode, "ok": True, "incident": node.incident,
+                "db": node.db_ok(), "model": llm.ping() if node.mode == "llm" else None}
 
     @app.post("/incident")
     def incident(body: IncidentIn):

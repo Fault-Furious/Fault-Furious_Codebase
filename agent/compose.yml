@@ -1,47 +1,19 @@
-# Agents on top of the platform, one per machine:
+# Agents with the real model instead of the mock, on top of the main compose file:
 #   docker compose -f docker-compose.yml -f agent/compose.yml up -d --build
-# Each agent logs in with its own role, never the telemetry admin.
-x-agent: &agent
-  build: { context: ., dockerfile: agent/Dockerfile }
-  networks: [default]
-  depends_on:
-    telemetrydb: { condition: service_healthy }
-  healthcheck:
-    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
-    interval: 3s
-    retries: 30
-
-x-agent-env: &agent_env
-  AGENT_MODE: ${AGENT_MODE:-mock}
-  GOSSIP_SECONDS: ${GOSSIP_SECONDS:-1}
-  PEER_TIMEOUT: ${PEER_TIMEOUT:-2}
-  SHARD_LIMIT: ${SHARD_LIMIT:-5000}
-  INCIDENT_WINDOW_SECONDS: ${INCIDENT_WINDOW_SECONDS:-60}
+# Ollama runs on the host, inside Docker on a Mac it wouldn't get the GPU:
+#   ollama pull qwen3:8b
+# Only adds env, no networks, so cutting an agent off still works the same.
+x-llm: &llm
+  environment:
+    AGENT_MODE: llm
+    OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+    OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+    LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
+    LLM_RETRIES: ${LLM_RETRIES:-1}
+    MODEL_RETRY_SECONDS: ${MODEL_RETRY_SECONDS:-5}
+  extra_hosts: ["host.docker.internal:host-gateway"]  # docker desktop has it, linux needs this
 
 services:
-  agent-stockholm:
-    <<: *agent
-    environment:
-      <<: *agent_env
-      NODE_ID: stockholm
-      PEERS: helsinki=http://agent-helsinki:8000,vantaa=http://agent-vantaa:8000
-      TELEMETRY_DSN: postgresql://agent_stockholm:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
-    ports: ["${AGENT_STOCKHOLM_PORT:-9001}:8000"]
-
-  agent-helsinki:
-    <<: *agent
-    environment:
-      <<: *agent_env
-      NODE_ID: helsinki
-      PEERS: stockholm=http://agent-stockholm:8000,vantaa=http://agent-vantaa:8000
-      TELEMETRY_DSN: postgresql://agent_helsinki:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
-    ports: ["${AGENT_HELSINKI_PORT:-9002}:8000"]
-
-  agent-vantaa:
-    <<: *agent
-    environment:
-      <<: *agent_env
-      NODE_ID: vantaa
-      PEERS: stockholm=http://agent-stockholm:8000,helsinki=http://agent-helsinki:8000
-      TELEMETRY_DSN: postgresql://agent_vantaa:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
-    ports: ["${AGENT_VANTAA_PORT:-9003}:8000"]
+  agent-stockholm: *llm
+  agent-helsinki: *llm
+  agent-vantaa: *llm
