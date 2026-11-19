@@ -168,6 +168,23 @@ services:
     depends_on:
       telemetrydb: { condition: service_healthy }
 
+  # live dashboard on http://localhost:9000, reads telemetry with the three agent roles
+  dashboard:
+    build: { context: ., dockerfile: dashboard/Dockerfile }
+    environment:
+      AGENTS: stockholm=http://agent-stockholm:8000,helsinki=http://agent-helsinki:8000,vantaa=http://agent-vantaa:8000
+      TELEMETRY_DSN_TEMPLATE: postgresql://agent_{node}:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+      REPO_DIR: ${PWD}
+    # the fault buttons run faults/*.sh, which drive Docker. that is root on this machine
+    # for anyone who can reach the page, so it only listens on localhost.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:${PWD}
+    ports: ["127.0.0.1:${DASHBOARD_PORT:-9000}:8000"]
+    networks: [agent_db, agent_peer]
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+
 # The two app servers share no network except "peer", so disconnecting it splits
 # them while both still reach the databases.
 networks:
