@@ -1,0 +1,7 @@
+{$STOCKHOLM_DOMAIN} {
+	reverse_proxy stockholm:8000
+}
+
+{$HELSINKI_DOMAIN} {
+	reverse_proxy helsinki:8000
+}

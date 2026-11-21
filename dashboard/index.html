@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Nordic Triage — Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg0:#030615; --bg1:#060B2B;
+  --glass:rgba(16,24,64,.58); --glass2:rgba(8,14,44,.72);
+  --stroke:rgba(120,160,255,.14); --stroke2:rgba(120,160,255,.26);
+  --fg:#F2F6FF; --dim:#9BA9D4; --faint:#6C7AA8;
+  --blue:#2F7BF6; --cyan:#4FD1FF; --ok:#01B574; --warn:#FFB547; --bad:#FF5B5B;
+  --violet:#8C6BFF;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;color:var(--fg);font-family:"Plus Jakarta Sans",system-ui,sans-serif;
+  font-size:14px;line-height:1.5;
+  background:
+    radial-gradient(1100px 620px at 78% -8%, rgba(47,123,246,.30), transparent 62%),
+    radial-gradient(900px 540px at 6% 4%, rgba(79,209,255,.14), transparent 58%),
+    radial-gradient(800px 700px at 50% 108%, rgba(140,107,255,.18), transparent 60%),
+    linear-gradient(170deg,#060B2B 0%,#030615 58%,#04081F 100%);
+  background-attachment:fixed;}
+.mono{font-family:"JetBrains Mono",ui-monospace,monospace}
+
+.shell{display:grid;grid-template-columns:238px minmax(0,1fr);gap:20px;max-width:1560px;margin:0 auto;padding:20px}
+@media (max-width:1020px){.shell{grid-template-columns:minmax(0,1fr);padding:14px;gap:14px}}
+.side{position:sticky;top:20px;align-self:start;background:var(--glass);
+  border:1px solid var(--stroke);border-radius:20px;backdrop-filter:blur(22px);padding:20px 16px}
+@media (max-width:1020px){.side{position:static;padding:14px}}
+.logo{display:flex;align-items:center;gap:10px;padding-bottom:16px;border-bottom:1px solid var(--stroke);margin-bottom:16px}
+.logo .mark{width:30px;height:30px;border-radius:9px;flex:none;
+  background:linear-gradient(135deg,var(--cyan),var(--blue));display:grid;place-items:center;
+  font-weight:800;font-size:13px;color:#031028}
+.logo b{font-size:12.5px;letter-spacing:.07em;text-transform:uppercase;line-height:1.25}
+.navlbl{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin:16px 0 8px;padding-left:10px}
+.nav{display:flex;flex-direction:column;gap:5px}
+@media (max-width:1020px){.nav{flex-direction:row;flex-wrap:wrap}.navlbl{display:none}}
+.nav a{display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:12px;color:var(--dim);
+  text-decoration:none;font-size:13px;font-weight:500;cursor:pointer}
+.nav a .ic{width:28px;height:28px;border-radius:9px;flex:none;display:grid;place-items:center;
+  background:rgba(255,255,255,.05);font-size:13px}
+.nav a.on{background:var(--glass2);color:var(--fg);font-weight:600;border:1px solid var(--stroke2)}
+.nav a.on .ic{background:linear-gradient(135deg,var(--cyan),var(--blue))}
+.helpbox{margin-top:20px;border-radius:16px;padding:14px;
+  background:linear-gradient(160deg,rgba(79,209,255,.26),rgba(47,123,246,.34));border:1px solid var(--stroke2)}
+.helpbox b{display:block;font-size:12.5px;margin-bottom:3px}
+.helpbox p{margin:0;font-size:11.5px;color:rgba(255,255,255,.82)}
+@media (max-width:1020px){.helpbox{display:none}}
+
+.main{min-width:0}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+.crumb{font-size:11px;color:var(--faint)}
+.crumb b{display:block;font-size:19px;color:var(--fg);font-weight:700;letter-spacing:-.015em;margin-top:2px}
+.sp{flex:1}
+.pill{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:600;padding:8px 13px;
+  border-radius:14px;border:1px solid var(--stroke);background:var(--glass);white-space:nowrap;color:var(--dim)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--ok);flex:none;box-shadow:0 0 10px currentColor;color:var(--ok)}
+.dot.warn{background:var(--warn);color:var(--warn)}
+.dot.bad{background:var(--bad);color:var(--bad)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+.dot.live{animation:pulse 1.15s ease-in-out infinite}
+button,select{font-family:inherit;font-size:12.5px;font-weight:600;color:var(--fg);background:var(--glass);
+  border:1px solid var(--stroke);border-radius:14px;padding:8px 14px;cursor:pointer;white-space:nowrap}
+button:hover{border-color:var(--stroke2)}
+button.primary{background:linear-gradient(135deg,var(--cyan),var(--blue));border-color:transparent;
+  color:#021026;box-shadow:0 8px 26px rgba(47,123,246,.38)}
+button.danger[data-on="1"]{background:linear-gradient(135deg,#FF7A7A,#E03B3B);border-color:transparent;color:#2A0505}
+button:disabled{opacity:.45;cursor:default;box-shadow:none}
+select option{background:#0B1230;color:#fff}
+
+.view{display:none}.view.on{display:block}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(12,minmax(0,1fr))}
+.card{background:var(--glass);border:1px solid var(--stroke);border-radius:20px;padding:18px;
+  backdrop-filter:blur(22px);box-shadow:0 10px 40px rgba(2,6,28,.42);min-width:0}
+.c3{grid-column:span 3}.c4{grid-column:span 4}.c5{grid-column:span 5}
+.c6{grid-column:span 6}.c7{grid-column:span 7}.c8{grid-column:span 8}.c12{grid-column:span 12}
+@media (max-width:1180px){.c3{grid-column:span 6}.c4,.c5{grid-column:span 6}.c7,.c8{grid-column:span 12}}
+@media (max-width:720px){.c3,.c4,.c5,.c6,.c7,.c8{grid-column:span 12}}
+
+h3.t{margin:0 0 2px;font-size:14.5px;font-weight:700;letter-spacing:-.01em}
+p.s{margin:0 0 14px;font-size:11.5px;color:var(--faint)}
+
+.kpi{display:flex;align-items:center;gap:14px}
+.kpi small{display:block;font-size:11.5px;color:var(--faint);font-weight:600}
+.kpi b{display:block;font-size:20px;font-weight:700;letter-spacing:-.02em;margin-top:3px}
+.kpi b i{font-style:normal;font-size:12.5px;font-weight:700;margin-left:7px}
+.up{color:var(--ok)}.down{color:var(--bad)}.flat{color:var(--faint)}
+.kpi .ic{width:46px;height:46px;border-radius:14px;flex:none;display:grid;place-items:center;
+  background:linear-gradient(135deg,var(--cyan),var(--blue));font-size:19px;box-shadow:0 8px 22px rgba(47,123,246,.34)}
+
+.hero{position:relative;overflow:hidden;
+  background:linear-gradient(140deg,rgba(47,123,246,.42),rgba(140,107,255,.3) 52%,rgba(6,11,43,.9));
+  border:1px solid var(--stroke2)}
+.hero .lbl{font-size:11px;color:rgba(255,255,255,.72);font-weight:600}
+.hero h2{margin:5px 0 8px;font-size:23px;font-weight:800;letter-spacing:-.03em;line-height:1.14}
+.hero p{margin:0;font-size:12.5px;color:rgba(255,255,255,.82)}
+.hero .meta{margin-top:16px;display:flex;gap:9px;flex-wrap:wrap}
+.tag{font-size:10.5px;font-weight:600;padding:5px 10px;border-radius:9px;background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.14);font-family:"JetBrains Mono",monospace}
+
+.gauge{display:grid;place-items:center;padding-top:4px}
+.gauge svg{width:100%;max-width:230px;height:auto;overflow:visible}
+.gbar{margin-top:12px;background:var(--glass2);border:1px solid var(--stroke);border-radius:14px;
+  padding:11px 14px;width:100%;display:flex;justify-content:space-between;font-size:11px;color:var(--faint)}
+.gbar b{display:block;font-size:14px;color:var(--fg);margin-top:2px}
+.mini{background:var(--glass2);border:1px solid var(--stroke);border-radius:14px;padding:11px 13px;margin-bottom:9px}
+.mini small{font-size:11px;color:var(--faint);font-weight:600}
+.mini b{display:block;font-size:17px;font-weight:700;margin-top:2px;letter-spacing:-.02em}
+.chart{width:100%;height:auto;display:block;overflow:visible}
+.legend{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:11px;color:var(--faint)}
+.legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+
+.agent{background:var(--glass2);border:1px solid var(--stroke);border-radius:16px;padding:13px;
+  margin-bottom:10px;position:relative;overflow:hidden}
+.agent:last-child{margin-bottom:0}
+.agent::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--faint)}
+.agent[data-ag="T"]::before{background:linear-gradient(180deg,var(--cyan),var(--blue))}
+.agent[data-ag="M"]::before{background:linear-gradient(180deg,#FFCF7A,var(--warn))}
+.agent[data-ag="L"]::before{background:linear-gradient(180deg,#B49CFF,var(--violet))}
+.ah{display:flex;align-items:center;gap:9px;margin-bottom:5px;flex-wrap:wrap}
+.ah b{font-size:13px;font-weight:700}
+.ah .src{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--faint);
+  border:1px solid var(--stroke);border-radius:7px;padding:2px 7px}
+.ah .st{margin-left:auto;font-size:10.5px;color:var(--faint);font-weight:600}
+.claim{font-size:12.5px;color:var(--dim);min-height:38px}
+.claim.active{color:var(--fg)}
+.meter{height:5px;background:rgba(255,255,255,.08);border-radius:4px;margin-top:10px;overflow:hidden}
+.meter i{display:block;height:100%;width:0;border-radius:4px;transition:width .65s cubic-bezier(.2,.7,.3,1)}
+.agent[data-ag="T"] .meter i{background:linear-gradient(90deg,var(--cyan),var(--blue))}
+.agent[data-ag="M"] .meter i{background:linear-gradient(90deg,#FFCF7A,var(--warn))}
+.agent[data-ag="L"] .meter i{background:linear-gradient(90deg,#B49CFF,var(--violet))}
+.mrow{display:flex;justify-content:space-between;font-size:10.5px;color:var(--faint);margin-top:6px}
+
+.hyp{padding:11px 0;border-bottom:1px solid var(--stroke)}
+.hyp:last-child{border-bottom:none;padding-bottom:0}
+.htop{display:flex;gap:10px;align-items:baseline}
+.htop b{font-size:12.5px;font-weight:500;flex:1;color:var(--dim)}
+.hyp.lead .htop b{color:var(--fg)}
+.htop .v{font-family:"JetBrains Mono",monospace;font-size:13px;font-weight:600}
+.hbar{height:6px;background:rgba(255,255,255,.08);border-radius:4px;margin-top:9px;overflow:hidden}
+.hbar i{display:block;height:100%;width:0;border-radius:4px;
+  background:linear-gradient(90deg,rgba(79,209,255,.5),var(--blue));transition:width .75s cubic-bezier(.2,.7,.3,1)}
+.hyp.lead .hbar i{background:linear-gradient(90deg,#2BE8A5,var(--ok))}
+.who{font-size:10px;color:var(--faint);margin-top:7px;font-family:"JetBrains Mono",monospace}
+
+.log{font-family:"JetBrains Mono",monospace;font-size:11.5px;line-height:1.8;max-height:232px;overflow-y:auto}
+.log div{color:var(--dim);display:flex;gap:10px}
+.log .tm{color:var(--faint);flex:none}
+.log .hl{color:var(--fg)}.log .er{color:var(--bad)}.log .gd{color:var(--ok)}
+
+.verdict{border-radius:16px;padding:16px;border:1px solid var(--stroke);background:var(--glass2)}
+.verdict.done{border-color:rgba(1,181,116,.5);background:linear-gradient(135deg,rgba(1,181,116,.16),var(--glass2))}
+.verdict.fail{border-color:rgba(255,91,91,.5);background:linear-gradient(135deg,rgba(255,91,91,.15),var(--glass2))}
+.verdict h4{margin:0 0 8px;font-size:14.5px;font-weight:700}
+.verdict p{margin:0;font-size:12.5px;color:var(--dim);line-height:1.62}
+.verdict .ev{font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--faint);
+  margin-top:11px;padding-top:11px;border-top:1px solid var(--stroke)}
+
+/* health */
+.hnode{background:var(--glass2);border:1px solid var(--stroke);border-radius:16px;padding:14px;
+  border-left:3px solid var(--ok);transition:border-color .4s,background .4s}
+.hnode.warn{border-left-color:var(--warn)}
+.hnode.bad{border-left-color:var(--bad);background:linear-gradient(135deg,rgba(255,91,91,.12),var(--glass2))}
+.hnode .hh{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.hnode .hh b{font-size:13px;font-weight:700}
+.hnode .hh .badge{margin-left:auto;font-size:10px;font-weight:700;padding:2px 8px;border-radius:7px;
+  background:rgba(1,181,116,.18);color:var(--ok)}
+.hnode.warn .hh .badge{background:rgba(255,181,71,.18);color:var(--warn)}
+.hnode.bad .hh .badge{background:rgba(255,91,91,.2);color:var(--bad)}
+.hnode em{display:block;font-style:normal;font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--faint)}
+.hstats{display:flex;gap:14px;margin-top:10px;flex-wrap:wrap}
+.hstats div{font-size:10.5px;color:var(--faint)}
+.hstats b{display:block;font-family:"JetBrains Mono",monospace;font-size:12.5px;color:var(--fg);margin-top:1px}
+.spark{display:flex;gap:2px;align-items:flex-end;height:26px;margin-top:10px}
+.spark i{flex:1;background:var(--blue);border-radius:1px;min-height:2px;opacity:.75}
+.hnode.bad .spark i{background:var(--bad)}
+.hnode.warn .spark i{background:var(--warn)}
+
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.tbl{width:100%;border-collapse:collapse;font-family:"JetBrains Mono",monospace;font-size:11.5px}
+.tbl th{text-align:left;color:var(--faint);font-weight:600;padding:8px 10px 8px 0;
+  border-bottom:1px solid var(--stroke2);white-space:nowrap}
+.tbl td{padding:9px 10px 9px 0;border-bottom:1px solid var(--stroke);color:var(--dim);vertical-align:top;white-space:nowrap}
+.tbl td:last-child,.tbl th:last-child{padding-right:0;white-space:normal}
+.tbl .k{color:var(--fg)}
+.ok{color:var(--ok)}.bd{color:var(--bad)}.wn{color:var(--warn)}
+
+.tiernm{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);margin:0 0 9px}
+.nrow{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.node{flex:1;min-width:140px;background:var(--glass2);border:1px solid var(--stroke);border-radius:14px;
+  padding:12px 13px;border-left:3px solid var(--ok)}
+.node.warn{border-left-color:var(--warn)}
+.node.bad{border-left-color:var(--bad);background:linear-gradient(135deg,rgba(255,91,91,.12),var(--glass2))}
+.node b{display:block;font-size:12.5px;font-weight:700}
+.node em{display:block;font-style:normal;font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--faint);margin-top:3px}
+.node .m{font-family:"JetBrains Mono",monospace;font-size:11.5px;margin-top:8px;color:var(--dim)}
+.node.bad .m{color:var(--bad)}.node.warn .m{color:var(--warn)}
+.conn{text-align:center;font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--faint);margin:0 0 14px}
+.sql{background:rgba(0,0,0,.34);border:1px solid var(--stroke);border-radius:12px;padding:13px 15px;
+  font-family:"JetBrains Mono",monospace;font-size:11.5px;color:var(--dim);overflow-x:auto;line-height:1.8;white-space:pre}
+.sql .kw{color:var(--cyan)}
+
+/* agents working */
+.work{background:var(--glass2);border:1px solid var(--stroke);border-radius:16px;padding:15px;height:100%}
+.work .wh{display:flex;align-items:center;gap:9px;margin-bottom:12px}
+.work .wh b{font-size:14px;font-weight:700}
+.work .wh .badge{margin-left:auto;font-size:10px;font-weight:700;padding:3px 9px;border-radius:8px;
+  background:rgba(255,255,255,.07);color:var(--faint)}
+.work.busy .wh .badge{background:rgba(79,209,255,.18);color:var(--cyan)}
+.step{display:flex;gap:10px;padding:7px 0;font-size:11.5px;color:var(--faint);
+  border-bottom:1px solid rgba(255,255,255,.05)}
+.step:last-child{border-bottom:none}
+.step .n{font-family:"JetBrains Mono",monospace;flex:none;width:16px}
+.step.done{color:var(--dim)}
+.step.done .n{color:var(--ok)}
+.step.now{color:var(--fg)}
+.step.now .n{color:var(--cyan)}
+.qbox{background:rgba(0,0,0,.3);border:1px solid var(--stroke);border-radius:10px;padding:9px 11px;
+  font-family:"JetBrains Mono",monospace;font-size:10.5px;color:var(--dim);margin-top:11px;
+  overflow-x:auto;white-space:pre}
+.empty{font-size:12.5px;color:var(--faint);padding:18px 0;text-align:center}
+.setrow{display:flex;align-items:center;gap:14px;padding:13px 0;border-bottom:1px solid var(--stroke);flex-wrap:wrap}
+.setrow:last-child{border-bottom:none}
+.setrow .lab{flex:1;min-width:180px}
+.setrow .lab b{display:block;font-size:13px}
+.setrow .lab span{font-size:11.5px;color:var(--faint)}
+input[type=range]{accent-color:var(--blue);width:150px}
+/* additions for the live build */
+.charts2{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:18px}
+.cw{position:relative}
+.cw h5{margin:0 0 6px;font-size:11.5px;font-weight:600;color:var(--dim)}
+.cw svg text{fill:var(--faint);font:10px "JetBrains Mono",monospace}
+.tipbox{position:absolute;pointer-events:none;display:none;transform:translate(-50%,-100%);white-space:nowrap;
+  background:#0B1230;border:1px solid var(--stroke2);border-radius:9px;padding:5px 9px;font-size:11px;color:var(--fg);z-index:2}
+.sql .cm{color:var(--faint)}
+.tbl td.wrap{white-space:normal}
+</style>
+</head>
+<body>
+<div class="shell">
+
+<aside class="side">
+  <div class="logo"><span class="mark">N</span><b>Nordic<br>Triage</b></div>
+  <nav class="nav">
+    <a data-go="console" class="on"><span class="ic">◧</span>Console</a>
+    <a data-go="health"><span class="ic">◉</span>Health</a>
+    <a data-go="agents"><span class="ic">◆</span>Agents at work</a>
+    <a data-go="telemetry"><span class="ic">≡</span>Telemetry</a>
+  </nav>
+  <p class="navlbl">Reference</p>
+  <nav class="nav">
+    <a data-go="topology"><span class="ic">⬡</span>Topology</a>
+    <a data-go="isolation"><span class="ic">◇</span>Isolation</a>
+    <a data-go="history"><span class="ic">▤</span>History</a>
+    <a data-go="settings"><span class="ic">⚙</span>Settings</a>
+  </nav>
+  <div class="helpbox">
+    <b>Live mode</b>
+    <p>Telemetry is real. Start a fault, wait about 30 s, then press Run incident.</p>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="top">
+    <div class="crumb" id="crumb">Pages / Console<b>Incident Triage</b></div>
+    <div class="sp"></div>
+    <span class="pill"><i class="dot live" id="sysdot"></i><span id="sysmsg">connecting…</span></span>
+    <span class="pill mono" id="clock">--:--:--</span>
+    <button id="run" class="primary">Run incident</button>
+    <button id="fSurge" class="danger" data-on="0" data-fault="surge" data-label="Signup surge" hidden>Start signup surge</button>
+    <button id="fSplit" class="danger" data-on="0" data-fault="split" data-label="split" hidden>Split app servers</button>
+  </div>
+
+  <!-- ============ CONSOLE ============ -->
+  <section class="view on" data-view="console">
+  <div class="grid">
+    <div class="card c3"><div class="kpi"><div><small>Request success · 1 min</small>
+      <b><span id="k1">—</span><i class="flat" id="k1d"></i></b></div><span class="ic">◎</span></div></div>
+    <div class="card c3"><div class="kpi"><div><small>Requests · 1 min</small>
+      <b><span id="k2">—</span><i class="flat" id="k2d"></i></b></div><span class="ic">◍</span></div></div>
+    <div class="card c3"><div class="kpi"><div><small>User DB connections</small>
+      <b><span id="k3">—</span><i class="flat" id="k3d"></i></b></div><span class="ic">▤</span></div></div>
+    <div class="card c3"><div class="kpi"><div><small>p95 latency</small>
+      <b><span id="k4">—</span><i class="flat" id="k4d"></i></b></div><span class="ic">◷</span></div></div>
+
+    <div class="card c5 hero">
+      <p class="lbl" id="heroLbl">Standing by</p>
+      <h2 id="heroTitle">Waiting for telemetry</h2>
+      <p id="heroBody">Three agents each watch one machine. None can see the others' rows.</p>
+      <div class="meta"><span class="tag">traces</span><span class="tag">metrics</span>
+        <span class="tag">logs</span><span class="tag" id="heroId">no incident</span></div>
+    </div>
+
+    <div class="card c3">
+      <h3 class="t">Diagnosis confidence</h3>
+      <p class="s">Leading claim, mean of the agents · threshold <span id="thLbl">0.80</span></p>
+      <div class="gauge">
+        <svg viewBox="0 0 200 128" aria-label="Confidence gauge">
+          <defs><linearGradient id="gg" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stop-color="#4FD1FF"/><stop offset="100%" stop-color="#2F7BF6"/></linearGradient></defs>
+          <path d="M18 112 A82 82 0 0 1 182 112" fill="none" stroke="rgba(255,255,255,.09)" stroke-width="13" stroke-linecap="round"/>
+          <path id="garc" d="M18 112 A82 82 0 0 1 182 112" fill="none" stroke="url(#gg)" stroke-width="13"
+            stroke-linecap="round" stroke-dasharray="258" stroke-dashoffset="258"
+            style="transition:stroke-dashoffset .8s cubic-bezier(.2,.7,.3,1)"/>
+          <text id="gval" x="100" y="104" text-anchor="middle" fill="#F2F6FF"
+            style="font:800 30px 'Plus Jakarta Sans',sans-serif">0.00</text>
+        </svg>
+        <div class="gbar"><span>backed by<b id="gagree">0 of 3</b></span>
+          <span style="text-align:right">status<b id="gstat">idle</b></span></div>
+      </div>
+    </div>
+
+    <div class="card c4">
+      <h3 class="t">Signal volume</h3>
+      <p class="s">Rows written in the last 5 minutes, all machines</p>
+      <div class="mini"><small>Traces · HTTP, SQL and peer spans</small><b id="v1">—</b></div>
+      <div class="mini"><small>Metrics · durations, signups, DB connections</small><b id="v2">—</b></div>
+      <div class="mini" style="margin-bottom:0"><small>Logs · app servers and Postgres</small><b id="v3">—</b></div>
+    </div>
+
+    <div class="card c8">
+      <h3 class="t">Request success rate and p95 latency</h3>
+      <p class="s">Last 5 minutes in 10 s steps, per app server</p>
+      <div class="charts2"><div class="cw" id="chSuccess"></div><div class="cw" id="chP95"></div></div>
+      <div class="legend"><span><i style="background:#4FD1FF"></i>stockholm</span>
+        <span><i style="background:#FFB547"></i>helsinki</span></div>
+    </div>
+
+    <div class="card c4">
+      <h3 class="t">Agents</h3>
+      <p class="s">One machine each, enforced by database roles</p>
+      <div id="agentCards"></div>
+    </div>
+
+    <div class="card c5"><h3 class="t">Shared belief</h3>
+      <p class="s">Claims ranked by mean confidence across agents</p>
+      <div id="belief"><p class="s" style="margin:0">Nothing proposed yet.</p></div></div>
+
+    <div class="card c7"><h3 class="t">Activity</h3>
+      <p class="s">What changed, as seen from this page</p>
+      <div class="log" id="log"></div></div>
+
+    <div class="card c7"><h3 class="t">Outcome</h3>
+      <p class="s">Written only when all agents hold the same state and at least two back the leading claim above threshold</p>
+      <div class="verdict" id="verdict"><h4>Awaiting incident</h4>
+        <p>Start a fault, wait about 30 s and press Run incident.</p></div></div>
+
+    <div class="card c5"><h3 class="t" id="refTitle">Reference answer</h3>
+      <p class="s">What the mock agents answer for the fault signal seen right now</p>
+      <div id="reference"></div></div>
+  </div>
+  </section>
+
+  <!-- ============ HEALTH ============ -->
+  <section class="view" data-view="health">
+  <div class="grid">
+    <div class="card c3"><div class="kpi"><div><small>Requests / min</small>
+      <b class="mono" id="h1">—</b></div><span class="ic">◎</span></div></div>
+    <div class="card c3"><div class="kpi"><div><small>Failed requests / min</small>
+      <b class="mono" id="h2">—</b></div><span class="ic">↻</span></div></div>
+    <div class="card c3"><div class="kpi"><div><small>Refused DB connections / min</small>
+      <b class="mono" id="h3">—</b></div><span class="ic">✛</span></div></div>
+    <div class="card c3"><div class="kpi"><div><small>Agents healthy</small>
+      <b class="mono" id="h4">—</b></div><span class="ic">♥</span></div></div>
+
+    <div class="card c12">
+      <h3 class="t">Live machine monitoring</h3>
+      <p class="s">From each machine's own telemetry · bars are the last 20 steps of 10 s</p>
+      <div class="grid" style="gap:12px" id="nodes"></div>
+    </div>
+
+    <div class="card c7">
+      <h3 class="t">Agent health checks</h3>
+      <p class="s">Each agent's /health, asked every refresh</p>
+      <div class="scroll"><table class="tbl" id="hcTable">
+        <thead><tr><th>agent</th><th>mode</th><th>telemetry db</th><th>incident</th><th>status</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+
+    <div class="card c5">
+      <h3 class="t">User database</h3>
+      <p class="s">From vantaa's metrics and logs</p>
+      <div class="mini"><small>Connections in use</small><b class="mono" id="a1">—</b></div>
+      <div class="mini"><small>Connection limit</small><b class="mono" id="a2">—</b></div>
+      <div class="mini"><small>Refused (53300) · last 30 s</small><b class="mono" id="a3">—</b></div>
+      <div class="mini" style="margin-bottom:0"><small>Failed app-to-app calls · last 30 s</small><b class="mono" id="a4">—</b></div>
+    </div>
+  </div>
+  </section>
+
+  <!-- ============ AGENTS AT WORK ============ -->
+  <section class="view" data-view="agents">
+  <div class="grid">
+    <div class="card c12">
+      <h3 class="t">What each agent is doing right now</h3>
+      <p class="s">Agents run the same five steps. They never see each other's rows, only each other's claims.</p>
+    </div>
+    <div class="c12"><div class="grid" id="work"></div></div>
+    <div class="card c12">
+      <h3 class="t">Gossip between agents</h3>
+      <p class="s">Claims and confidences only. No telemetry rows ever cross.</p>
+      <div class="scroll"><table class="tbl" id="msgTable">
+        <thead><tr><th>agent</th><th>heard from</th><th>last exchange</th><th>link</th></tr></thead>
+        <tbody></tbody></table></div>
+    </div>
+  </div>
+  </section>
+
+  <!-- ============ TELEMETRY ============ -->
+  <section class="view" data-view="telemetry">
+  <div class="grid">
+    <div class="card c12"><h3 class="t">Traces</h3>
+      <p class="s">Newest spans, read machine by machine with each agent's own role</p>
+      <div class="scroll"><table class="tbl" id="rowsTraces">
+        <thead><tr><th>id</th><th>time</th><th>source</th><th>name</th><th>target</th><th>ms</th><th>status</th></tr></thead>
+        <tbody></tbody></table></div></div>
+    <div class="card c6"><h3 class="t">Metrics</h3>
+      <p class="s">Newest samples</p>
+      <div class="scroll"><table class="tbl" id="rowsMetrics">
+        <thead><tr><th>id</th><th>time</th><th>source</th><th>metric</th><th>value</th></tr></thead>
+        <tbody></tbody></table></div></div>
+    <div class="card c6"><h3 class="t">Logs</h3>
+      <p class="s">Newest lines</p>
+      <div class="scroll"><table class="tbl" id="rowsLogs">
+        <thead><tr><th>id</th><th>time</th><th>source</th><th>level</th><th>code</th><th>message</th></tr></thead>
+        <tbody></tbody></table></div></div>
+  </div>
+  </section>
+
+  <!-- ============ TOPOLOGY ============ -->
+  <section class="view" data-view="topology">
+  <div class="grid">
+    <div class="card c8">
+      <h3 class="t">Platform topology</h3>
+      <p class="s">Three components, one agent beside each</p>
+      <p class="tiernm">Application servers</p>
+      <div class="nrow" id="topoApps"></div>
+      <p class="conn">↓ SQL query spans &nbsp;·&nbsp; stockholm ↔ helsinki peer calls</p>
+      <p class="tiernm">Data services</p>
+      <div class="nrow" id="topoDb"></div>
+      <p class="conn">each machine's telemetry → its own agent only</p>
+      <p class="tiernm">Agents</p>
+      <div class="nrow" style="margin-bottom:0" id="topoAgents"></div>
+    </div>
+    <div class="card c4">
+      <h3 class="t">Schemas</h3>
+      <p class="s">User database, PostgreSQL</p>
+      <div class="sql"><span class="kw">users</span>      id, username, password, email
+<span class="kw">messages</span>   id, message, username</div>
+      <div class="mini" style="margin-top:14px"><small>App server 1</small><b>Stockholm · 170.57.176.88</b></div>
+      <div class="mini"><small>App server 2</small><b>Helsinki · 104.172.209.255</b></div>
+      <div class="mini" style="margin-bottom:0"><small>User DB</small><b>Vantaa · 88.211.152.184</b></div>
+    </div>
+  </div>
+  </section>
+
+  <!-- ============ ISOLATION ============ -->
+  <section class="view" data-view="isolation">
+  <div class="grid">
+    <div class="card c12">
+      <h3 class="t">Isolation</h3>
+      <p class="s">Each agent connects with its own role. Row-level security hides every other machine's rows.</p>
+      <div class="sql"><span class="kw">ALTER TABLE</span> traces  <span class="kw">ENABLE ROW LEVEL SECURITY</span>;
+<span class="kw">ALTER TABLE</span> metrics <span class="kw">ENABLE ROW LEVEL SECURITY</span>;
+<span class="kw">ALTER TABLE</span> logs    <span class="kw">ENABLE ROW LEVEL SECURITY</span>;
+<span class="kw">GRANT SELECT ON</span> traces, metrics, logs <span class="kw">TO</span> agents;   <span class="cm">-- agent_stockholm, agent_helsinki, agent_vantaa</span>
+<span class="kw">REVOKE ALL ON SCHEMA</span> public <span class="kw">FROM</span> PUBLIC;
+
+<span class="cm">-- as agent_helsinki</span>
+<span class="kw">SELECT</span> count(*) <span class="kw">FROM</span> traces <span class="kw">WHERE</span> source = 'stockholm';   <span class="cm">-- 0, always</span></div>
+      <p class="s" style="margin:14px 0 0">This page reads telemetry the same way: three connections, one per agent role. It never uses the telemetry owner.</p>
+    </div>
+    <div class="card c4"><h3 class="t">Stockholm agent</h3><p class="s">source = stockholm</p>
+      <div class="mini"><small>Sees</small><b>Its own requests failing</b></div>
+      <div class="mini"><small>Cannot see</small><b>Why the database refuses</b></div>
+      <div class="mini" style="margin-bottom:0"><small>Role</small><b>agent_stockholm</b></div></div>
+    <div class="card c4"><h3 class="t">Helsinki agent</h3><p class="s">source = helsinki</p>
+      <div class="mini"><small>Sees</small><b>Its own requests and peer calls</b></div>
+      <div class="mini"><small>Cannot see</small><b>Stockholm's side of the link</b></div>
+      <div class="mini" style="margin-bottom:0"><small>Role</small><b>agent_helsinki</b></div></div>
+    <div class="card c4"><h3 class="t">Vantaa agent</h3><p class="s">source = vantaa</p>
+      <div class="mini"><small>Sees</small><b>Connections and refusals</b></div>
+      <div class="mini"><small>Cannot see</small><b>Signup traffic or the app link</b></div>
+      <div class="mini" style="margin-bottom:0"><small>Role</small><b>agent_vantaa</b></div></div>
+  </div>
+  </section>
+
+  <!-- ============ HISTORY ============ -->
+  <section class="view" data-view="history">
+  <div class="grid"><div class="card c12">
+    <h3 class="t">Run history</h3><p class="s">Every incident seen since this page was opened</p>
+    <div id="hist"><p class="empty">No incidents yet. Go to Console and press Run incident.</p></div>
+  </div></div>
+  </section>
+
+  <!-- ============ SETTINGS ============ -->
+  <section class="view" data-view="settings">
+  <div class="grid">
+    <div class="card c7"><h3 class="t">Console settings</h3><p class="s">These only change this page, not the agents</p>
+      <div class="setrow"><div class="lab"><b>Confidence threshold</b>
+        <span>Minimum mean confidence before the page writes a diagnosis</span></div>
+        <input type="range" id="setTh" min="50" max="99" value="80"><span class="mono" id="setThV">0.80</span></div>
+      <div class="setrow"><div class="lab"><b>Refresh</b><span>How often the page asks for new data</span></div>
+        <input type="range" id="setSp" min="1" max="10" step="1" value="2"><span class="mono" id="setSpV">2 s</span></div>
+    </div>
+    <div class="card c5"><h3 class="t">Inject a fault</h3><p class="s">The buttons in the top bar run these same scripts. From a terminal, in the repo root:</p>
+      <div class="sql">faults/signup_surge.sh        <span class="cm"># userdb runs out of connections</span>
+faults/signup_surge.sh reset
+
+faults/split.sh               <span class="cm"># stockholm and helsinki lose each other</span>
+faults/split.sh reset</div></div>
+  </div>
+  </section>
+
+</main>
+</div>
+
+<script>
+(function(){
+var NODES=[
+ {id:"stockholm",ag:"T",name:"Stockholm",role:"App server 1",ip:"170.57.176.88",color:"#4FD1FF"},
+ {id:"helsinki",ag:"M",name:"Helsinki",role:"App server 2",ip:"104.172.209.255",color:"#FFB547"},
+ {id:"vantaa",ag:"L",name:"Vantaa",role:"User database",ip:"88.211.152.184",color:"#8C6BFF"}];
+var APPS=["stockholm","helsinki"];
+var FAULT={
+ surge:["bad","Signup surge","The user database is refusing connections","userdb reports 53300, no connection slots left, while signups flood in."],
+ split:["bad","Server split","Stockholm and Helsinki cannot reach each other","Calls between the two app servers are failing. Both still reach the database."],
+ none:["","Standing by","No fault signal","Traffic looks normal on all three machines."]};
+var TITLES={console:"Incident Triage",health:"Live Health",agents:"Agents at Work",telemetry:"Telemetry",
+ topology:"Topology",isolation:"Isolation",history:"History",settings:"Settings"};
+var TH=0.80,EVERY=2000,view="console",logs=[],hist=[],prev=null,timer=null;
+var $=function(id){return document.getElementById(id)};
+var esc=function(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})};
+var hhmmss=function(t){return new Date(t*1000).toLocaleTimeString([],{hour12:false})};
+var num=function(v){return v==null?"—":Math.round(v).toLocaleString()};
+function set(id,v){var e=$(id);if(e)e.textContent=v}
+function html(id,v){var e=$(id);if(e)e.innerHTML=v}
+function say(text,cls){logs.unshift({t:hhmmss(Date.now()/1000),text:text,cls:cls||""});logs=logs.slice(0,60)}
+
+/* ---------- everything the views need, worked out once per refresh ---------- */
+function derive(s){
+  var T=s.telemetry;
+  var ser=function(n,k){return(T[n]&&T[n][k])||[]};
+  var sum=function(n,k,c){return ser(n,k).slice(-c).reduce(function(a,b){return a+(b||0)},0)};
+  var last=function(n,k){var v=ser(n,k).filter(function(x){return x!=null});return v.length?v[v.length-1]:null};
+  var both=function(k,c){return APPS.reduce(function(a,n){return a+sum(n,k,c)},0)};
+  var d={ser:ser,sum:sum,last:last};
+  d.req=both("requests",6); d.failed=both("failed",6);
+  d.success=d.req?100*(1-d.failed/d.req):null;
+  d.p95=Math.max.apply(null,APPS.map(function(n){return last(n,"p95")||0}));
+  d.conns=last("vantaa","connections"); d.maxc=last("vantaa","max_connections");
+  d.refused=sum("vantaa","refused",3); d.refusedMin=sum("vantaa","refused",6);
+  d.cut=both("peer_errors",3)+both("peer_unreachable",3);
+  d.fault=d.refused>0?"surge":d.cut>0?"split":"none";
+  d.vol={}; ["n_traces","n_metrics","n_logs"].forEach(function(k){
+    d.vol[k]=NODES.reduce(function(a,n){return a+sum(n.id,k,30)},0)});
+  d.state={};
+  APPS.forEach(function(n){
+    var r=sum(n,"requests",3),f=sum(n,"failed",3),p=sum(n,"peer_errors",3)+sum(n,"peer_unreachable",3);
+    d.state[n]=T[n].error?"bad":(r&&f/r>.2)||p>0?"bad":f>0?"warn":"ok"});
+  d.state.vantaa=T.vantaa.error?"bad":d.refused>0?"bad":"ok";
+
+  var claims={};
+  NODES.forEach(function(n){var a=s.agents[n.id]; if(!a.up) return;
+    Object.keys(a.state).forEach(function(id){var c=a.state[id];
+      var m=claims[id]||(claims[id]={text:c.text,ev:{},reg:{}});
+      c.evidence_ids.forEach(function(e){m.ev[e]=1});
+      Object.keys(c.confidence).forEach(function(w){var r=c.confidence[w];
+        if(!m.reg[w]||r.version>m.reg[w].version) m.reg[w]=r})})});
+  d.claims=Object.keys(claims).map(function(id){var c=claims[id],conf={},vals=[];
+    Object.keys(c.reg).forEach(function(w){conf[w]=c.reg[w].value;vals.push(c.reg[w].value)});
+    return{text:c.text,conf:conf,voters:vals.length,evidence:Object.keys(c.ev).length,
+      mean:vals.reduce(function(a,b){return a+b},0)/(vals.length||1)}})
+    .sort(function(a,b){return b.mean-a.mean});
+  d.top=d.claims[0]||null;
+  d.up=NODES.filter(function(n){return s.agents[n.id].up});
+  d.on=d.up.filter(function(n){return s.agents[n.id].incident});
+  var keys={}; d.on.forEach(function(n){var a=s.agents[n.id];keys[a.incident+a.digest]=1});
+  d.agree=d.on.length===NODES.length&&Object.keys(keys).length===1;
+  d.incident=d.on.length?s.agents[d.on[0].id].incident:null;
+  d.digest=d.on.length?s.agents[d.on[0].id].digest:"";
+  d.verdict=!d.incident?"idle":!d.agree?"gossip":!d.top?"empty":
+    (d.top.mean>=TH&&d.top.voters>=2)?"done":"fail";
+  return d;
+}
+
+/* ---------- line chart with a crosshair ---------- */
+function drawChart(id,title,lines,times,unit,fixedMax){
+  var W=420,H=170,L=38,R=8,T=10,B=20,host=$(id);
+  var all=[]; lines.forEach(function(l){l.values.forEach(function(v){if(v!=null)all.push(v)})});
+  var max=fixedMax||Math.max(1,Math.max.apply(null,all.concat([1])))*1.1;
+  var x=function(i){return L+i*(W-L-R)/(times.length-1)};
+  var y=function(v){return T+(1-v/max)*(H-T-B)};
+  var paths=lines.map(function(l){var dd="",pen=false;
+    l.values.forEach(function(v,i){if(v==null){pen=false;return}
+      dd+=(pen?"L":"M")+x(i).toFixed(1)+" "+y(v).toFixed(1);pen=true});
+    return'<path d="'+dd+'" fill="none" stroke="'+l.color+'" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>'}).join("");
+  var grid=[0,.5,1].map(function(f){var v=(fixedMax||max/1.1)*f;
+    return'<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="rgba(255,255,255,.07)"/>'+
+      '<text x="'+(L-6)+'" y="'+(y(v)+3)+'" text-anchor="end">'+Math.round(v)+'</text>'}).join("");
+  host.innerHTML='<h5>'+esc(title)+'</h5><svg class="chart" viewBox="0 0 '+W+' '+H+'" role="img" aria-label="'+esc(title)+'">'+grid+
+    '<text x="'+L+'" y="'+(H-4)+'">5 min ago</text><text x="'+(W-R)+'" y="'+(H-4)+'" text-anchor="end">now</text>'+paths+
+    '<line class="cross" y1="'+T+'" y2="'+(H-B)+'" stroke="rgba(255,255,255,.35)" visibility="hidden"/></svg><div class="tipbox"></div>';
+  var svg=host.querySelector("svg"),cross=host.querySelector(".cross"),tip=host.querySelector(".tipbox");
+  svg.addEventListener("mousemove",function(e){
+    var box=svg.getBoundingClientRect(),px=(e.clientX-box.left)/box.width*W;
+    var i=Math.max(0,Math.min(times.length-1,Math.round((px-L)/(W-L-R)*(times.length-1))));
+    cross.setAttribute("x1",x(i));cross.setAttribute("x2",x(i));cross.setAttribute("visibility","visible");
+    tip.style.display="block";tip.style.left=(x(i)/W*box.width)+"px";tip.style.top=(svg.offsetTop+4)+"px";
+    tip.textContent=hhmmss(times[i])+" · "+lines.map(function(l){
+      return l.name+" "+(l.values[i]==null?"—":Math.round(l.values[i])+unit)}).join(" · ")});
+  svg.addEventListener("mouseleave",function(){cross.setAttribute("visibility","hidden");tip.style.display="none"});
+}
+
+/* ---------- console ---------- */
+function renderConsole(s,d,times){
+  var f=FAULT[d.fault];
+  set("k1",d.success==null?"—":d.success.toFixed(1)+"%");
+  set("k1d",d.failed?num(d.failed)+" failed":""); $("k1d").className=d.failed?"down":"flat";
+  set("k2",num(d.req));
+  set("k3",d.conns==null?"—":num(d.conns)+"/"+num(d.maxc));
+  set("k3d",d.refused?"refusing":""); $("k3d").className=d.refused?"down":"flat";
+  set("k4",num(d.p95)+" ms"); set("k4d","");
+
+  set("heroLbl",f[1]); set("heroTitle",f[2]);
+  set("heroBody",f[3]+(d.incident?"":" No incident is open."));
+  set("heroId",d.incident||"no incident");
+
+  var m=d.top?d.top.mean:0;
+  $("garc").setAttribute("stroke-dashoffset",258*(1-m)); set("gval",m.toFixed(2));
+  set("gagree",(d.top?d.top.voters:0)+" of 3"); set("thLbl",TH.toFixed(2));
+  set("gstat",{idle:"idle",gossip:"gossiping",empty:"no claims",done:"diagnosed",fail:"undecided"}[d.verdict]);
+  set("v1",num(d.vol.n_traces)); set("v2",num(d.vol.n_metrics)); set("v3",num(d.vol.n_logs));
+
+  var rate=function(n){var r=d.ser(n,"requests"),fl=d.ser(n,"failed");
+    return r.map(function(v,i){return v?100*(1-fl[i]/v):null})};
+  var mk=function(fn){return APPS.map(function(n,i){return{name:n,color:NODES[i].color,values:fn(n)}})};
+  drawChart("chSuccess","Request success rate, %",mk(rate),times,"%",100);
+  drawChart("chP95","p95 latency, ms",mk(function(n){return d.ser(n,"p95")}),times," ms");
+
+  html("agentCards",NODES.map(function(n){var a=s.agents[n.id];
+    var mine=d.claims.filter(function(c){return c.conf[n.id]!=null})
+      .sort(function(x,y){return y.conf[n.id]-x.conf[n.id]})[0];
+    var claim=!a.up?"Agent is not answering.":!a.incident?"No open incident.":mine?mine.text:"Sees nothing wrong on its machine.";
+    var c=mine?mine.conf[n.id]:0;
+    return'<div class="agent" data-ag="'+n.ag+'"><div class="ah"><b>'+n.name+' agent</b><span class="src">agent_'+n.id+'</span>'+
+      '<span class="st">'+(a.up?esc(a.health.mode):"down")+'</span></div>'+
+      '<div class="claim'+(mine?" active":"")+'">'+esc(claim)+'</div>'+
+      '<div class="meter"><i style="width:'+c*100+'%"></i></div>'+
+      '<div class="mrow"><span>confidence</span><span class="mono">'+(mine?c.toFixed(2):"—")+'</span></div></div>'}).join(""));
+
+  html("belief",d.claims.length?d.claims.map(function(c,i){
+    return'<div class="hyp'+(i===0?" lead":"")+'"><div class="htop"><b>'+esc(c.text)+'</b><span class="v">'+c.mean.toFixed(2)+'</span></div>'+
+      '<div class="hbar"><i style="width:'+c.mean*100+'%"></i></div>'+
+      '<div class="who">'+NODES.map(function(n){return n.id+" "+(c.conf[n.id]==null?"abstains":c.conf[n.id].toFixed(2))}).join(" · ")+
+      ' · '+c.evidence+' evidence rows</div></div>'}).join(""):'<p class="s" style="margin:0">Nothing proposed yet.</p>');
+
+  html("log",logs.map(function(l){return'<div><span class="tm">'+l.t+'</span><span class="'+l.cls+'">'+esc(l.text)+'</span></div>'}).join(""));
+
+  var v=$("verdict"),t=d.top;
+  var votes=t?NODES.map(function(n){return n.id+" "+(t.conf[n.id]==null?"abstains":t.conf[n.id].toFixed(2))}).join(", "):"";
+  if(d.verdict==="idle"){v.className="verdict";
+    v.innerHTML="<h4>Awaiting incident</h4><p>Inject a fault, wait about 30 s and press Run incident.</p>"}
+  else if(d.verdict==="gossip"){v.className="verdict";
+    v.innerHTML="<h4>Agents are still exchanging</h4><p>"+d.on.length+" of 3 agents are on "+esc(d.incident)+" and they do not hold the same state yet.</p>"}
+  else if(d.verdict==="empty"){v.className="verdict";
+    v.innerHTML="<h4>No claims</h4><p>All three agents looked at their own rows and none of them proposed anything.</p>"}
+  else if(d.verdict==="done"){v.className="verdict done";
+    v.innerHTML="<h4>Diagnosis: "+esc(t.text)+"</h4><p>Mean confidence "+t.mean.toFixed(2)+" ("+votes+"). "+
+      (d.claims[1]?"Next: "+esc(d.claims[1].text)+" at "+d.claims[1].mean.toFixed(2)+".":"")+"</p>"+
+      '<div class="ev">'+t.evidence+" evidence rows · "+esc(d.incident)+" · digest "+esc(d.digest.slice(0,12))+"</div>"}
+  else{v.className="verdict fail";
+    v.innerHTML="<h4>No diagnosis written</h4><p>The leading claim, “"+esc(t.text)+"”, "+
+      (t.voters<2?"is backed by only one agent":"sits at "+t.mean.toFixed(2)+", below the threshold "+TH.toFixed(2))+
+      " ("+votes+"). The console stops here rather than guess.</p>"+
+      '<div class="ev">'+esc(d.incident)+" · digest "+esc(d.digest.slice(0,12))+"</div>"}
+
+  set("refTitle","Reference answer: "+(d.fault==="none"?"no fault":FAULT[d.fault][1].toLowerCase()));
+  var want=s.expected[d.fault]||{};
+  html("reference",Object.keys(want).map(function(text){var c=want[text],vals=Object.keys(c).map(function(k){return c[k]});
+    var mean=vals.reduce(function(a,b){return a+b},0)/vals.length;
+    return'<div class="hyp"><div class="htop"><b>'+esc(text)+'</b><span class="v">'+mean.toFixed(2)+'</span></div>'+
+      '<div class="who">'+NODES.map(function(n){return n.id+" "+(c[n.id]==null?"abstains":c[n.id].toFixed(2))}).join(" · ")+'</div></div>'}).join("")
+    ||'<p class="s" style="margin:0">Nothing expected.</p>');
+}
+
+/* ---------- health ---------- */
+function renderHealth(s,d){
+  set("h1",num(d.req)); set("h2",num(d.failed)); set("h3",num(d.refusedMin));
+  set("h4",d.up.filter(function(n){return s.agents[n.id].health.db!==false}).length+" / 3");
+  html("nodes",NODES.map(function(n){var st=d.state[n.id],isDb=n.id==="vantaa";
+    var spark=d.ser(n.id,isDb?"connections":"requests").slice(-20).map(function(v){return v||0});
+    var mx=Math.max.apply(null,spark.concat([1]));
+    var stats=isDb?
+      [["connections",num(d.conns)+"/"+num(d.maxc)],["refused 30 s",num(d.refused)],["rows 5 min",num(d.sum(n.id,"n_logs",30)+d.sum(n.id,"n_metrics",30))]]:
+      [["p95",num(d.last(n.id,"p95"))+" ms"],["failed 30 s",num(d.sum(n.id,"failed",3))],["peer errors 30 s",num(d.sum(n.id,"peer_errors",3))]];
+    return'<div class="c4"><div class="hnode '+(st==="ok"?"":st)+'"><div class="hh"><i class="dot '+(st==="ok"?"":st)+' live"></i><b>'+n.role+' · '+n.name+'</b>'+
+      '<span class="badge">'+(st==="bad"?"failing":st==="warn"?"degraded":"healthy")+'</span></div><em>'+n.ip+'</em>'+
+      '<div class="hstats">'+stats.map(function(x){return'<div>'+x[0]+'<b>'+x[1]+'</b></div>'}).join("")+'</div>'+
+      '<div class="spark">'+spark.map(function(v){return'<i style="height:'+Math.max(8,Math.round(v/mx*100))+'%"></i>'}).join("")+'</div></div></div>'}).join(""));
+  $("hcTable").querySelector("tbody").innerHTML=NODES.map(function(n){var a=s.agents[n.id];
+    if(!a.up) return'<tr><td class="k">'+n.id+'</td><td>—</td><td>—</td><td>—</td><td class="bd">DOWN</td></tr>';
+    var db=a.health.db;
+    return'<tr><td class="k">'+n.id+'</td><td>'+esc(a.health.mode)+'</td><td class="'+(db===false?"bd":"ok")+'">'+
+      (db===false?"unreachable":db?"ok":"none")+'</td><td>'+esc(a.incident||"—")+'</td><td class="'+(db===false?"wn":"ok")+'">'+
+      (db===false?"DEGRADED":"PASS")+'</td></tr>'}).join("");
+  set("a1",num(d.conns)); set("a2",num(d.maxc)); set("a3",num(d.refused)); set("a4",num(d.cut));
+}
+
+/* ---------- agents at work ---------- */
+var STEPS=["connect with its own role","read its own machine's rows","form claims","exchange claims with peers","cross-check peers' claims"];
+function renderAgents(s,d){
+  var rows=[];
+  html("work",NODES.map(function(n){var a=s.agents[n.id],done=0;
+    if(a.up){var heard=Object.keys(a.peers||{}).length;
+      done=a.health.db===false?0:!a.incident?1:heard<2?3:d.agree?5:4}
+    var mine=d.claims.filter(function(c){return c.conf[n.id]!=null});
+    NODES.forEach(function(p){if(p.id===n.id) return;
+      var t=a.up&&a.peers?a.peers[p.id]:null,age=t?Math.max(0,s.now-t):null;
+      rows.push('<tr><td class="k">'+n.id+'</td><td class="k">'+p.id+'</td><td>'+(age==null?"—":age.toFixed(0)+" s ago")+'</td>'+
+        '<td class="'+(age==null?"wn":age>5?"bd":"ok")+'">'+(!a.up?"agent down":age==null?"not yet in this incident":age>5?"silent":"ok")+'</td></tr>')});
+    return'<div class="c4"><div class="work'+(done>0&&done<5?" busy":"")+'"><div class="wh"><b>'+n.name+' agent</b>'+
+      '<span class="badge">'+(!a.up?"down":done===5?"settled":a.incident?"working":"idle")+'</span></div>'+
+      STEPS.map(function(st,i){return'<div class="step '+(i<done?"done":i===done?"now":"")+'"><span class="n">'+(i<done?"✓":i+1)+'</span><span>'+st+'</span></div>'}).join("")+
+      '<div class="qbox">-- as agent_'+n.id+'\nSELECT * FROM traces, logs, metrics\n  WHERE ts in the incident window;\n-- holds '+mine.length+' claim'+(mine.length===1?"":"s")+
+      (a.up?', digest '+esc((a.digest||"").slice(0,8)):"")+'</div></div></div>'}).join(""));
+  $("msgTable").querySelector("tbody").innerHTML=rows.join("");
+}
+
+/* ---------- telemetry rows ---------- */
+function renderRows(r){
+  var cls=function(v){return v==="ERROR"||v==="FATAL"?"bd":v==="WARN"?"wn":"ok"};
+  var tm=function(x){return new Date(x.ts).toLocaleTimeString([],{hour12:false})};
+  $("rowsTraces").querySelector("tbody").innerHTML=r.traces.map(function(x){
+    return'<tr><td class="k">'+esc(x.id)+'</td><td>'+tm(x)+'</td><td>'+esc(x.source)+'</td><td>'+esc(x.name)+'</td><td>'+esc(x.target)+
+      '</td><td>'+num(x.duration_ms)+'</td><td class="'+cls(x.status)+'">'+esc(x.status)+'</td></tr>'}).join("");
+  $("rowsMetrics").querySelector("tbody").innerHTML=r.metrics.map(function(x){
+    return'<tr><td class="k">'+esc(x.id)+'</td><td>'+tm(x)+'</td><td>'+esc(x.source)+'</td><td>'+esc(x.metric)+'</td><td>'+
+      (Math.round(x.value*100)/100)+' '+esc(x.unit||"")+'</td></tr>'}).join("");
+  $("rowsLogs").querySelector("tbody").innerHTML=r.logs.map(function(x){
+    return'<tr><td class="k">'+esc(x.id)+'</td><td>'+tm(x)+'</td><td>'+esc(x.source)+'</td><td class="'+cls(x.severity)+'">'+esc(x.severity)+
+      '</td><td>'+esc(x.code||"")+'</td><td class="wrap">'+esc(x.message)+'</td></tr>'}).join("");
+}
+
+/* ---------- topology and history ---------- */
+function renderTopology(s,d){
+  var node=function(n,m){var st=d.state[n.id];
+    return'<div class="node '+(st==="ok"?"":st)+'"><b>'+n.role+' · '+n.name+'</b><em>'+n.ip+'</em><div class="m">'+m+'</div></div>'};
+  html("topoApps",APPS.map(function(id,i){return node(NODES[i],num(d.sum(id,"requests",6))+" req/min · "+num(d.sum(id,"failed",6))+" failed")}).join(""));
+  html("topoDb",node(NODES[2],num(d.conns)+"/"+num(d.maxc)+" conns · "+num(d.refused)+" refused"));
+  html("topoAgents",NODES.map(function(n){var a=s.agents[n.id];
+    return'<div class="node '+(a.up?"":"bad")+'"><b>'+n.name+' agent</b><em>agent_'+n.id+'</em><div class="m">'+
+      (a.up?esc(a.health.mode)+" · "+Object.keys(a.state).length+" claims":"down")+'</div></div>'}).join(""));
+}
+function renderHistory(){
+  html("hist",hist.length?'<div class="scroll"><table class="tbl"><thead><tr><th>time</th><th>incident</th><th>fault signal</th><th>outcome</th><th>leading claim</th></tr></thead><tbody>'+
+    hist.map(function(h){return'<tr><td>'+h.t+'</td><td class="k">'+esc(h.id)+'</td><td>'+h.fault+'</td><td class="'+
+      (h.verdict==="done"?"ok":h.verdict==="fail"?"bd":"")+'">'+h.verdict+'</td><td class="wrap">'+
+      (h.top?esc(h.top.text)+" · "+h.top.mean.toFixed(2):"—")+'</td></tr>'}).join("")+'</tbody></table></div>'
+    :'<p class="empty">No incidents yet. Go to Console and press Run incident.</p>');
+}
+
+/* ---------- what changed since the last refresh ---------- */
+function notice(s,d){
+  var p=prev;
+  if(!p){say("console connected","gd")}
+  if(!p||p.fault!==d.fault) say(d.fault==="none"?(p?"fault signal cleared":"no fault signal"):"fault signal: "+FAULT[d.fault][2].toLowerCase(),d.fault==="none"?"gd":"er");
+  NODES.forEach(function(n){var up=s.agents[n.id].up;
+    if(p&&p.upIds[n.id]!==up) say(n.id+" agent "+(up?"is back":"stopped answering"),up?"gd":"er")});
+  if(d.incident&&(!p||p.incident!==d.incident)) say("incident "+d.incident+" opened","hl");
+  d.claims.forEach(function(c){if(!p||!p.texts[c.text])
+    say("claim: "+c.text+" ("+Object.keys(c.conf).join(", ")+")","hl")});
+  if(d.incident&&d.agree&&(!p||!p.agree||p.incident!==d.incident)) say("all 3 agents hold the same state, digest "+d.digest.slice(0,8),"gd");
+  // only once the outcome held for two refreshes, mid-gossip states flicker
+  var said=p?p.said:"",key=d.verdict+d.incident;
+  if(p&&p.verdict===d.verdict&&said!==key&&(d.verdict==="done"||d.verdict==="fail")&&(said=key))
+    say(d.verdict==="done"?"diagnosis written: "+d.top.text:"no diagnosis, leading claim is below threshold",d.verdict==="done"?"gd":"er");
+  if(d.incident){var h=hist.filter(function(x){return x.id===d.incident})[0];
+    if(!h){h={id:d.incident,t:hhmmss(s.now),fault:d.fault};hist.unshift(h)}
+    h.verdict=d.verdict;h.top=d.top}
+  var upIds={},texts={}; NODES.forEach(function(n){upIds[n.id]=s.agents[n.id].up});
+  d.claims.forEach(function(c){texts[c.text]=1});
+  prev={fault:d.fault,upIds:upIds,incident:d.incident,agree:d.agree,verdict:d.verdict,texts:texts,said:said};
+}
+
+function render(s){
+  var d=derive(s),times=[];
+  for(var i=29;i>=0;i--) times.push(s.last-s.bucket*i);
+  notice(s,d);
+  var f=FAULT[d.fault];
+  $("sysdot").className="dot live "+f[0]; set("sysmsg",d.fault==="none"?"All systems nominal":f[2]);
+  set("clock",hhmmss(s.now));
+  renderFaults(s.faults);
+  renderConsole(s,d,times); renderHealth(s,d); renderAgents(s,d); renderTopology(s,d); renderHistory();
+}
+
+var FBTN={surge:["fSurge","Start signup surge","Stop signup surge"],split:["fSplit","Split app servers","Heal the split"]};
+function renderFaults(f){
+  Object.keys(FBTN).forEach(function(k){var b=$(FBTN[k][0]);
+    b.hidden=!f.enabled; if(b.disabled) return;
+    b.setAttribute("data-on",f.active[k]?"1":"0"); b.textContent=FBTN[k][f.active[k]?2:1]})}
+Object.keys(FBTN).forEach(function(k){var b=$(FBTN[k][0]);
+  b.addEventListener("click",function(){
+    var on=b.getAttribute("data-on")!=="1";
+    b.disabled=true; b.textContent=on?"Starting…":"Stopping…";
+    say((on?"injecting fault: ":"removing fault: ")+k,"hl");
+    fetch("api/fault/"+k+"/"+(on?"on":"off"),{method:"POST"}).then(function(r){
+      return r.json().then(function(j){if(!r.ok) throw new Error(j.detail||r.status);return j})})
+      .then(function(){say(k+(on?" is on, telemetry shows it within about 20 s":" is off"),on?"er":"gd")})
+      .catch(function(e){say(k+" failed: "+e.message,"er")})
+      .then(function(){b.disabled=false})})});
+
+function poll(){
+  fetch("api/status").then(function(r){if(!r.ok) throw new Error(r.status);return r.json()}).then(render)
+    .catch(function(e){$("sysdot").className="dot bad";set("sysmsg","dashboard server not answering ("+e.message+")")})
+    .then(function(){
+      if(view==="telemetry") fetch("api/rows").then(function(r){return r.json()}).then(renderRows).catch(function(){});
+      timer=setTimeout(poll,EVERY)});
+}
+
+Array.prototype.forEach.call(document.querySelectorAll("[data-go]"),function(a){
+  a.addEventListener("click",function(){
+    view=a.getAttribute("data-go");
+    Array.prototype.forEach.call(document.querySelectorAll("[data-go]"),function(x){x.classList.toggle("on",x===a)});
+    Array.prototype.forEach.call(document.querySelectorAll(".view"),function(v){v.classList.toggle("on",v.getAttribute("data-view")===view)});
+    $("crumb").innerHTML="Pages / "+a.textContent.replace(/^./,"")+"<b>"+TITLES[view]+"</b>";
+    if(view==="telemetry") fetch("api/rows").then(function(r){return r.json()}).then(renderRows).catch(function(){});
+  })});
+
+$("run").addEventListener("click",function(){
+  var b=$("run"); b.disabled=true; b.textContent="Agents analysing…";
+  say("asked all agents to diagnose the last 60 s","hl");
+  fetch("api/incident",{method:"POST"}).then(function(r){return r.json()}).then(function(r){
+    Object.keys(r.nodes).forEach(function(n){var v=r.nodes[n];
+      say(v.error?n+" could not start: "+v.error:n+" read "+(v.records?Object.keys(v.records).reduce(function(a,k){return a+v.records[k]},0):0)+
+        " rows and made "+v.claims.length+" claim"+(v.claims.length===1?"":"s"),v.error?"er":"")})})
+    .catch(function(e){say("could not start an incident: "+e.message,"er")})
+    .then(function(){b.disabled=false;b.textContent="Run incident"});
+});
+
+$("setTh").addEventListener("input",function(e){TH=e.target.value/100;set("setThV",TH.toFixed(2))});
+$("setSp").addEventListener("input",function(e){EVERY=e.target.value*1000;set("setSpV",e.target.value+" s")});
+
+poll();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,201 @@
+# Every value here is a default; override with env vars or a .env file.
+# services write as telemetry_writer (insert only, see telemetry/init.sh), never the owner
+x-telemetry-dsn: &telemetry_dsn postgresql://telemetry_writer:${TELEMETRY_WRITER_PASSWORD:-writer}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+x-pg-health: &pg_health
+  test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+  interval: 2s
+  retries: 30
+x-app-health: &app_health
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/login', timeout=2)"]
+  interval: 3s
+  retries: 30
+
+services:
+  telemetrydb:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${TELEMETRY_USER:-telemetry}
+      POSTGRES_PASSWORD: ${TELEMETRY_PASSWORD:-telemetry}
+      POSTGRES_DB: ${TELEMETRY_DB:-telemetry}
+      AGENT_SOURCES: ${AGENT_SOURCES:-stockholm helsinki vantaa}
+      AGENT_DB_PASSWORD: ${AGENT_DB_PASSWORD:-agent}
+      TELEMETRY_WRITER_PASSWORD: ${TELEMETRY_WRITER_PASSWORD:-writer}
+    volumes:
+      - ./telemetry/init.sh:/docker-entrypoint-initdb.d/01.sh:ro
+    ports: ["${TELEMETRY_PORT:-5433}:5432"]
+    networks: [default, stockholm_net, helsinki_net, agent_db]
+    healthcheck: *pg_health
+
+  # Vantaa
+  userdb:
+    image: postgres:16
+    command:
+      - postgres
+      - -c
+      - max_connections=${USERDB_MAX_CONNECTIONS:-100}
+      - -c
+      - logging_collector=on
+      - -c
+      - log_destination=csvlog
+      - -c
+      - log_directory=log
+      - -c
+      - log_file_mode=0644
+    environment:
+      POSTGRES_USER: ${USERDB_ADMIN_USER:-forum_admin}
+      POSTGRES_PASSWORD: ${USERDB_ADMIN_PASSWORD:-forum_admin}
+      POSTGRES_DB: ${USERDB_DB:-forum}
+      APP_DB_USER: ${APP_DB_USER:-forum}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:-forum}
+    volumes:
+      - ./app/userdb-init.sh:/docker-entrypoint-initdb.d/01.sh:ro
+      - userdb-data:/var/lib/postgresql/data
+    networks: [stockholm_net, helsinki_net]
+    healthcheck: *pg_health
+
+  # Vantaa's telemetry: Postgres can't import otel.py, so a sidecar reads its log and stats.
+  dbmon:
+    build: { context: ., dockerfile: dbmon/Dockerfile }
+    environment:
+      OTEL_SOURCE: ${VANTAA_SOURCE:-vantaa}
+      TELEMETRY_DSN: *telemetry_dsn
+      USER_DB_DSN: postgresql://${USERDB_ADMIN_USER:-forum_admin}:${USERDB_ADMIN_PASSWORD:-forum_admin}@userdb:5432/${USERDB_DB:-forum}
+      PG_LOG_DIR: /pgdata/log
+    volumes:
+      - userdb-data:/pgdata:ro
+    networks: [stockholm_net]
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+      userdb: { condition: service_healthy }
+
+  stockholm:
+    build: &app_build { context: ., dockerfile: app/Dockerfile }
+    environment:
+      OTEL_SOURCE: ${STOCKHOLM_SOURCE:-stockholm}
+      TELEMETRY_DSN: *telemetry_dsn
+      USER_DB_DSN: &app_user_dsn postgresql://${APP_DB_USER:-forum}:${APP_DB_PASSWORD:-forum}@userdb:5432/${USERDB_DB:-forum}
+      PEER_URL: http://helsinki:8000
+    ports: ["${STOCKHOLM_PORT:-8001}:8000"]
+    networks: [stockholm_net, peer]
+    healthcheck: *app_health
+    depends_on: &app_deps
+      telemetrydb: { condition: service_healthy }
+      userdb: { condition: service_healthy }
+
+  helsinki:
+    build: *app_build
+    environment:
+      OTEL_SOURCE: ${HELSINKI_SOURCE:-helsinki}
+      TELEMETRY_DSN: *telemetry_dsn
+      USER_DB_DSN: *app_user_dsn
+      PEER_URL: http://stockholm:8000
+    ports: ["${HELSINKI_PORT:-8002}:8000"]
+    networks: [helsinki_net, peer]
+    healthcheck: *app_health
+    depends_on: *app_deps
+
+  loadgen:
+    build: { context: ., dockerfile: loadgen/Dockerfile }
+    environment:
+      TARGETS: http://stockholm:8000,http://helsinki:8000
+      BASE_RPS: ${BASE_RPS:-2}
+      SIGNUP_RPS: ${SIGNUP_RPS:-0}
+    networks: [stockholm_net, helsinki_net]
+    depends_on:
+      stockholm: { condition: service_healthy }
+      helsinki: { condition: service_healthy }
+
+  # Belief agents read telemetry through their own row-level-security role.
+  # They gossip on agent_peer, which can be disconnected independently from
+  # the app servers' nordic-peer network during partition tests.
+  agent-stockholm:
+    build: { context: ., dockerfile: agent/Dockerfile }
+    environment:
+      NODE_ID: stockholm
+      PEERS: helsinki=http://agent-helsinki:8000,vantaa=http://agent-vantaa:8000
+      TELEMETRY_DSN: postgresql://agent_stockholm:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+      AGENT_MODE: ${AGENT_MODE:-mock}
+      GOSSIP_SECONDS: ${GOSSIP_SECONDS:-1}
+      PEER_TIMEOUT: ${PEER_TIMEOUT:-2}
+      SHARD_LIMIT: ${SHARD_LIMIT:-5000}
+      INCIDENT_WINDOW_SECONDS: ${INCIDENT_WINDOW_SECONDS:-60}
+    ports: ["${AGENT_STOCKHOLM_PORT:-9001}:8000"]
+    networks: [agent_db, agent_peer]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+
+  agent-helsinki:
+    build: { context: ., dockerfile: agent/Dockerfile }
+    environment:
+      NODE_ID: helsinki
+      PEERS: stockholm=http://agent-stockholm:8000,vantaa=http://agent-vantaa:8000
+      TELEMETRY_DSN: postgresql://agent_helsinki:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+      AGENT_MODE: ${AGENT_MODE:-mock}
+      GOSSIP_SECONDS: ${GOSSIP_SECONDS:-1}
+      PEER_TIMEOUT: ${PEER_TIMEOUT:-2}
+      SHARD_LIMIT: ${SHARD_LIMIT:-5000}
+      INCIDENT_WINDOW_SECONDS: ${INCIDENT_WINDOW_SECONDS:-60}
+    ports: ["${AGENT_HELSINKI_PORT:-9002}:8000"]
+    networks: [agent_db, agent_peer]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+
+  agent-vantaa:
+    build: { context: ., dockerfile: agent/Dockerfile }
+    environment:
+      NODE_ID: vantaa
+      PEERS: stockholm=http://agent-stockholm:8000,helsinki=http://agent-helsinki:8000
+      TELEMETRY_DSN: postgresql://agent_vantaa:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+      AGENT_MODE: ${AGENT_MODE:-mock}
+      GOSSIP_SECONDS: ${GOSSIP_SECONDS:-1}
+      PEER_TIMEOUT: ${PEER_TIMEOUT:-2}
+      SHARD_LIMIT: ${SHARD_LIMIT:-5000}
+      INCIDENT_WINDOW_SECONDS: ${INCIDENT_WINDOW_SECONDS:-60}
+    ports: ["${AGENT_VANTAA_PORT:-9003}:8000"]
+    networks: [agent_db, agent_peer]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 3s
+      retries: 30
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+
+  # live dashboard on http://localhost:9000, reads telemetry with the three agent roles
+  dashboard:
+    build: { context: ., dockerfile: dashboard/Dockerfile }
+    environment:
+      AGENTS: stockholm=http://agent-stockholm:8000,helsinki=http://agent-helsinki:8000,vantaa=http://agent-vantaa:8000
+      TELEMETRY_DSN_TEMPLATE: postgresql://agent_{node}:${AGENT_DB_PASSWORD:-agent}@telemetrydb:5432/${TELEMETRY_DB:-telemetry}
+      REPO_DIR: ${PWD}
+    # the fault buttons run faults/*.sh, which drive Docker. that is root on this machine
+    # for anyone who can reach the page, so it only listens on localhost.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ${PWD}:${PWD}
+    ports: ["127.0.0.1:${DASHBOARD_PORT:-9000}:8000"]
+    networks: [agent_db, agent_peer]
+    depends_on:
+      telemetrydb: { condition: service_healthy }
+
+# The two app servers share no network except "peer", so disconnecting it splits
+# them while both still reach the databases.
+networks:
+  default:
+  stockholm_net:
+  helsinki_net:
+  peer:
+    name: ${PEER_NETWORK:-nordic-peer}
+  agent_db:
+  agent_peer:
+    name: ${AGENT_PEER_NETWORK:-nordic-agent-peer}
+
+volumes:
+  userdb-data:

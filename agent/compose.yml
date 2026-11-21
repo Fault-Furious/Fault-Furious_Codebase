@@ -1,0 +1,19 @@
+# Agents with the real model instead of the mock, on top of the main compose file:
+#   docker compose -f docker-compose.yml -f agent/compose.yml up -d --build
+# Ollama runs on the host, inside Docker on a Mac it wouldn't get the GPU:
+#   ollama pull qwen3:8b
+# Only adds env, no networks, so cutting an agent off still works the same.
+x-llm: &llm
+  environment:
+    AGENT_MODE: llm
+    OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+    OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+    LLM_TIMEOUT: ${LLM_TIMEOUT:-120}
+    LLM_RETRIES: ${LLM_RETRIES:-1}
+    MODEL_RETRY_SECONDS: ${MODEL_RETRY_SECONDS:-5}
+  extra_hosts: ["host.docker.internal:host-gateway"]  # docker desktop has it, linux needs this
+
+services:
+  agent-stockholm: *llm
+  agent-helsinki: *llm
+  agent-vantaa: *llm
