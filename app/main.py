@@ -105,13 +105,56 @@ if __name__ == "__main__":
     print("ok")
 
 
+STYLE = """
+:root{--bg:#f4f6f8;--card:#fff;--ink:#1f2a33;--muted:#64717d;--line:#dde3e8;--accent:#2f6f8f;--accent-ink:#fff;--soft:#e8f0f4;--warn:#9a3b2f;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#141a1f;--card:#1c242b;--ink:#e6ecf0;--muted:#93a1ad;--line:#2c3740;--accent:#7fb6d1;--accent-ink:#10181d;--soft:#22303a;--warn:#e59482;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--accent)}
+header{background:var(--card);border-bottom:1px solid var(--line)}
+.bar{max-width:46rem;margin:0 auto;padding:.9rem 1rem;display:flex;align-items:center;justify-content:space-between;gap:1rem;flex-wrap:wrap}
+.brand{font-weight:700;letter-spacing:.02em;text-decoration:none;color:var(--ink)}
+.brand span{color:var(--accent)}
+main{max-width:46rem;margin:0 auto;padding:2rem 1rem 3rem}
+h1{font-size:1.75rem;margin:0 0 1.25rem;letter-spacing:-.01em}
+p{margin:0 0 1rem}
+.stats{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:1.25rem}
+.pill{background:var(--soft);color:var(--ink);border-radius:999px;padding:.25rem .8rem;font-size:.875rem}
+.pill b{color:var(--accent)}
+form{display:flex;gap:.5rem;flex-wrap:wrap;margin:0 0 1.25rem}
+form.stack{flex-direction:column;max-width:22rem;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:1.25rem}
+label{font-size:.875rem;color:var(--muted);display:flex;flex-direction:column;gap:.3rem}
+input{font:inherit;color:inherit;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:.55rem .75rem;flex:1;min-width:0}
+input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent}
+button,.btn{font:inherit;font-weight:600;background:var(--accent);color:var(--accent-ink);border:0;border-radius:8px;padding:.55rem 1.1rem;cursor:pointer;text-decoration:none;display:inline-block}
+button:hover,.btn:hover{filter:brightness(1.08)}
+.links{display:flex;gap:.75rem;margin-bottom:1.5rem}
+.links a{text-decoration:none;font-weight:500}
+ul.feed{list-style:none;margin:0 0 1.5rem;padding:0;display:flex;flex-direction:column;gap:.6rem}
+ul.feed li{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:.75rem 1rem;overflow-wrap:anywhere}
+ul.feed li b{display:block;font-size:.85rem;color:var(--accent);margin-bottom:.15rem}
+.notice{background:var(--card);border-left:4px solid var(--warn);border-radius:6px;padding:.75rem 1rem}
+"""
+
+
 def page(title, body, status=200):
-    return HTMLResponse(f"<!doctype html><title>{escape(title)}</title><h1>{escape(title)}</h1>{body}", status_code=status)
+    return HTMLResponse(
+        f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
+        f'<meta name="viewport" content="width=device-width,initial-scale=1">'
+        f"<title>{escape(title)}</title><style>{STYLE}</style></head><body>"
+        f'<header><div class="bar"><a class="brand" href="/">Nordic <span>Forum</span></a>'
+        f'<nav class="links"><a href="/login">Log in</a><a href="/signup">Sign up</a></nav></div></header>'
+        f"<main><h1>{escape(title)}</h1>{body}</main></body></html>",
+        status_code=status)
+
+
+def feed(rows):
+    return '<ul class="feed">' + "".join(f"<li><b>{escape(u)}</b>{escape(m)}</li>" for _, u, m in rows) + "</ul>"
 
 
 @app.exception_handler(psycopg.Error)
 async def db_down(request, e):
-    return page("Service unavailable", "<p>Database error, try again.</p>", 503)
+    return page("Service unavailable", '<p class="notice">Database error, try again.</p>', 503)
 
 
 @app.get("/")
@@ -122,15 +165,19 @@ def index(q: str = ""):
                      "SELECT id, username, message FROM messages WHERE message ILIKE %s ORDER BY id DESC LIMIT %s",
                      (f"%{q}%", PAGE_SIZE))
     peer = online_in_peer() if PEER_URL else None
-    items = "".join(f"<li><b>{escape(u)}</b>: {escape(m)}</li>" for _, u, m in rows)
     return page("Nordic Forum",
-                f'<p>Online here: {online_here()}, other region: {"?" if peer is None else peer}</p><form><input name="q" value="{escape(q)}"><button>Search</button></form>'
-                f'<a href="/login">Log in</a> | <a href="/signup">Sign up</a><ul>{items}</ul>')
+                f'<div class="stats"><span class="pill">Online here: <b>{online_here()}</b></span>'
+                f'<span class="pill">Other region: <b>{"?" if peer is None else peer}</b></span></div>'
+                f'<form><input name="q" value="{escape(q)}" placeholder="Search messages…" aria-label="Search messages"><button>Search</button></form>'
+                f'{feed(rows)}')
 
 
 @app.get("/login")
 def login_form():
-    return page("Log in", '<form method="post"><input name="username"><input name="password" type="password"><button>Log in</button></form>')
+    return page("Log in", '<form method="post" class="stack">'
+                          '<label>Username<input name="username" autocomplete="username"></label>'
+                          '<label>Password<input name="password" type="password" autocomplete="current-password"></label>'
+                          '<button>Log in</button></form>')
 
 
 @app.post("/login")
@@ -141,14 +188,18 @@ def login(username: str = Form(...), password: str = Form(...)):
     otel.log("INFO" if ok else "WARN", f"login {'ok' if ok else 'failed'} for {username}")
     otel.metric("login.attempts", 1, "count", ok=ok)
     if not ok:
-        return page("Log in", "<p>Wrong username or password.</p>", 401)
+        return page("Log in", '<p class="notice">Wrong username or password.</p>', 401)
     _online[username] = time.time()
     return RedirectResponse("/", status_code=303)
 
 
 @app.get("/signup")
 def signup_form():
-    return page("Sign up", '<form method="post"><input name="username"><input name="email" type="email"><input name="password" type="password"><button>Sign up</button></form>')
+    return page("Sign up", '<form method="post" class="stack">'
+                           '<label>Username<input name="username" autocomplete="username"></label>'
+                           '<label>Email<input name="email" type="email" autocomplete="email"></label>'
+                           '<label>Password<input name="password" type="password" autocomplete="new-password"></label>'
+                           '<button>Sign up</button></form>')
 
 
 @app.post("/signup")
@@ -157,7 +208,7 @@ def signup(username: str = Form(...), email: str = Form(...), password: str = Fo
         query("insert user", "INSERT INTO users (username, password, email) VALUES (%s, %s, %s)",
               (username, hash_pw(password), email), fetch=False)
     except psycopg.errors.UniqueViolation:
-        return page("Sign up", "<p>Username taken.</p>", 409)
+        return page("Sign up", '<p class="notice">Username taken.</p>', 409)
     otel.log("INFO", f"signup {username}")
     otel.metric("signups", 1, "count")
     return RedirectResponse("/login", status_code=303)
@@ -170,5 +221,4 @@ def forum(forum: str, page_no: int = 1):
     rows = query("select messages",
                  "SELECT id, username, message FROM messages ORDER BY id DESC LIMIT %s OFFSET %s",
                  (PAGE_SIZE, (max(page_no, 1) - 1) * PAGE_SIZE))
-    items = "".join(f"<li><b>{escape(u)}</b>: {escape(m)}</li>" for _, u, m in rows)
-    return page(f"Forum: {forum}", f'<ul>{items}</ul><a href="?page_no={page_no + 1}">Next</a>')
+    return page(f"Forum: {forum}", f'{feed(rows)}<a class="btn" href="?page_no={page_no + 1}">Next</a>')
