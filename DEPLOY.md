@@ -1,31 +1,34 @@
 # Host the reviewer site
 
 This stack needs a Linux server that can run Docker Compose. The two app sites
-are published on separate hostnames. Caddy obtains and renews HTTPS certificates.
-The database and agent API ports remain private; only Caddy publishes ports 80
-and 443.
+and reviewer dashboard use separate hostnames. Caddy obtains and renews HTTPS
+certificates. The dashboard requires a login. Databases, agent APIs and the
+dashboard container remain private; only Caddy publishes ports 80 and 443.
 
 ## Before deployment
 
-You need a server with Docker Engine and the Docker Compose plugin, plus two DNS
-names whose A/AAAA records point to that server. Allow inbound TCP 80 and 443
-(and UDP 443 for HTTP/3) in the server firewall. The demo pages are synthetic;
-do not use this setup for real user accounts or production data.
+You need a server with Docker Engine and the Docker Compose plugin, plus three
+DNS names whose A/AAAA records point to that server: one each for Stockholm,
+Helsinki and the dashboard. Allow inbound TCP 80 and 443 (and UDP 443 for
+HTTP/3) in the server firewall. The demo pages are synthetic; do not use this
+setup for real user accounts or production data.
 
 ## Deploy
 
 On the server:
 
 ```sh
-git clone --branch integration-working-app https://github.com/Fault-Furious/Fault-Furious_Codebase.git
+git clone --branch feat/public-hosting https://github.com/Fault-Furious/Fault-Furious_Codebase.git
 cd Fault-Furious_Codebase
 cp .env.production.example .env
 ```
 
-Edit `.env` with the two real hostnames and unique random values for every
-password. Hex values avoid special-character issues in database connection
-strings; for example, generate each with `openssl rand -hex 32`. Keep `.env`
-private; it is ignored by Git. Then validate and start the stack:
+Create DNS records for all three hostnames and point them at the server. Edit
+`.env` with those names, a dashboard username, and a Caddy password hash. Generate
+the hash on the server with `docker run --rm caddy:2 caddy hash-password
+--plaintext 'your-long-random-password'`. Set unique random values for every
+database password; `openssl rand -hex 32` generates safe hex values for connection
+strings. Keep `.env` private; it is ignored by Git. Then validate and start:
 
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml config --quiet
@@ -33,6 +36,11 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --
 ```
 
 Reviewers can open `https://$STOCKHOLM_DOMAIN` and `https://$HELSINKI_DOMAIN`.
+The incident dashboard is at `https://$DASHBOARD_DOMAIN` and prompts for the
+configured username and password. It can display telemetry and start an
+investigation. Public agents use the deterministic mock by default; connecting
+Ollama on the server requires separate model setup and enough server memory.
+Fault-injection buttons are disabled in the public deployment.
 Check service status with:
 
 ```sh
@@ -46,10 +54,9 @@ git pull --ff-only
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build --wait
 ```
 
-## Current reviewer experience
+## Access boundaries
 
-This exposes the two sample forum sites. It does not provide an incident
-dashboard: diagnosis results are currently JSON from the private agent APIs.
-Do not publish ports 9001–9003 for review. If reviewers need to see diagnoses,
-the project needs a small authenticated reviewer page or a protected report
-endpoint before deployment.
+Only Caddy is publicly reachable. Do not publish ports 5433 or 9001–9003. The
+public dashboard is protected by Caddy authentication and has no Docker socket
+or repository mount, so it cannot trigger host-level fault scripts. Keep access
+credentials private and share them only with reviewers.

@@ -42,6 +42,9 @@ services:
     environment:
       STOCKHOLM_DOMAIN: ${STOCKHOLM_DOMAIN:?set STOCKHOLM_DOMAIN in .env}
       HELSINKI_DOMAIN: ${HELSINKI_DOMAIN:?set HELSINKI_DOMAIN in .env}
+      DASHBOARD_DOMAIN: ${DASHBOARD_DOMAIN:?set DASHBOARD_DOMAIN in .env}
+      DASHBOARD_USER: ${DASHBOARD_USER:?set DASHBOARD_USER in .env}
+      DASHBOARD_PASSWORD_HASH: ${DASHBOARD_PASSWORD_HASH:?set DASHBOARD_PASSWORD_HASH in .env}
     ports:
       - "80:80"
       - "443:443"
@@ -50,12 +53,26 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    networks: [stockholm_net, helsinki_net]
+    networks: [stockholm_net, helsinki_net, reviewer]
     depends_on:
       stockholm: { condition: service_healthy }
       helsinki: { condition: service_healthy }
+      dashboard: { condition: service_started }
+
+  # The public reviewer dashboard has no Docker socket or repo mount.
+  # Caddy applies authentication before forwarding any dashboard/API request.
+  dashboard:
+    ports: !reset []
+    volumes: !reset []
+    environment:
+      REPO_DIR: ""
+    networks: [agent_db, agent_peer, reviewer]
 
 volumes:
   telemetry-data:
   caddy-data:
   caddy-config:
+
+networks:
+  reviewer:
+    internal: true

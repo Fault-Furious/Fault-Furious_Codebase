@@ -5,3 +5,10 @@
 {$HELSINKI_DOMAIN} {
 	reverse_proxy helsinki:8000
 }
+
+{$DASHBOARD_DOMAIN} {
+	basic_auth {
+		{$DASHBOARD_USER} {$DASHBOARD_PASSWORD_HASH}
+	}
+	reverse_proxy dashboard:8000
+}
