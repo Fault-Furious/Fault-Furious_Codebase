@@ -125,6 +125,13 @@ dead or cut off is left out of that, and the other two must not have heard from 
 anything. `tests/data` holds rows captured from a real
 surge, split and quiet minute, thinned out, for the model tests.
 
+Last `llm` run: 2026-11-22 on `final` (9376909), `qwen3:8b` in Ollama on the host GPU
+(Apple Silicon), PASS. All three agree on the surge (userdb refusing connections, 53300,
+0.99, so signup inserts failing, 0.98) and the split (stockholm and helsinki can't reach
+each other, 1.00, userdb healthy, 1.00), nothing on a quiet minute, and they held up with
+vantaa stopped, stockholm cut off and helsinki without a model. Port 5433 was taken on
+that machine, so it ran with `TELEMETRY_PORT=5434`, the check itself goes through Docker.
+
 ## Not done yet
 
 - Agents gossip over `nordic-agent-peer` but also share `agent_db`, so taking an agent off
