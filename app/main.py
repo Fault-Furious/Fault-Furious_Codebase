@@ -142,7 +142,7 @@ def page(title, body, status=200):
         f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
         f'<meta name="viewport" content="width=device-width,initial-scale=1">'
         f"<title>{escape(title)}</title><style>{STYLE}</style></head><body>"
-        f'<header><div class="bar"><a class="brand" href="/">Nordic <span>Forum</span></a>'
+        f'<header><div class="bar"><a class="brand" href="/">Fault <span>&amp; Furious</span></a>'
         f'<nav class="links"><a href="/login">Log in</a><a href="/signup">Sign up</a></nav></div></header>'
         f"<main><h1>{escape(title)}</h1>{body}</main></body></html>",
         status_code=status)
@@ -165,7 +165,7 @@ def index(q: str = ""):
                      "SELECT id, username, message FROM messages WHERE message ILIKE %s ORDER BY id DESC LIMIT %s",
                      (f"%{q}%", PAGE_SIZE))
     peer = online_in_peer() if PEER_URL else None
-    return page("Nordic Forum",
+    return page("Fault & Furious",
                 f'<div class="stats"><span class="pill">Online here: <b>{online_here()}</b></span>'
                 f'<span class="pill">Other region: <b>{"?" if peer is None else peer}</b></span></div>'
                 f'<form><input name="q" value="{escape(q)}" placeholder="Search messages…" aria-label="Search messages"><button>Search</button></form>'
