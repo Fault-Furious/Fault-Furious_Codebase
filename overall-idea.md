@@ -1,5 +1,9 @@
 # Fault & Furious: Distributed Incident Triage Swarm
 
+> Historical proposal. This document includes aspirational components and
+> experiments that are not part of the current three-machine demo. See the root
+> [README](README.md) for implemented scope.
+
 **DataStorm**
 
 **Group members:**\

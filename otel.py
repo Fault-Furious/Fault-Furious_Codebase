@@ -113,7 +113,7 @@ def log(severity, message, code=None):
 
 def metric(name, value, unit, **attrs):
     trace_id = _current.get()[0]
-    if trace_id:  # metrics table has no trace_id column; attrs carries the link
+    if trace_id:  # retained in attrs; the schema exposes a generated trace_id column
         attrs["trace_id"] = trace_id
     _put(METRICS, dict(ts=_now(), metric=name, value=value, unit=unit,
                        source=SOURCE, attrs=json.dumps(attrs, default=str)))

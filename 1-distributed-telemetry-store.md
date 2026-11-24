@@ -1,5 +1,8 @@
 # Week 1: foundations
 
+> Historical milestone plan from the initial proposal. The implemented project
+> scope differs; see the root [README](README.md) for the current architecture.
+
 Nothing useful gets built this week. The goal is that by Friday, all four of us
 can work in parallel without waiting on each other. If we skip this, P2 spends
 week 2 blocked on P1 and P3 spends it blocked on P4, and we lose a third of the

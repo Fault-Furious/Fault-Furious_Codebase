@@ -1,4 +1,8 @@
-# Nordic Triage — platform owner brief
+# Historical platform brief
+
+> This document records the original project brief and early deadlines. Some
+> scope and implementation details changed during development. See the root
+> [README](README.md) for the current build and run instructions.
 
 Read this first. It is the full context for the build.
 

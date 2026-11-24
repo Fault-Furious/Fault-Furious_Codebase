@@ -18,10 +18,10 @@ bad() { echo "FAIL $1"; fail=1; }
 
 admin=${TELEMETRY_USER:-telemetry}
 apw=${TELEMETRY_PASSWORD:-telemetry}
-# init scripts only run on an empty volume, so an old stub schema can still be in place
+# init scripts only run on an empty volume; verify the current schema is present
 if [ "$(q $admin $apw -c "SELECT to_regclass('public.machines') IS NOT NULL")" != t ]; then
-  echo "FAIL telemetry DB was not built from telemetry/init.sh"
-  echo "     point telemetrydb at ./telemetry/init.sh in docker-compose.yml, then: docker compose down -v && docker compose up -d --build"
+  echo "FAIL telemetry DB is missing the machines table from telemetry/init.sh"
+  echo "     after backing up any data, recreate the volume to rerun initialization"
   echo FAIL
   exit 1
 fi

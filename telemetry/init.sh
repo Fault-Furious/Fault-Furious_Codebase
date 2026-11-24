@@ -1,5 +1,5 @@
 #!/bin/sh
-# Telemetry DB schema and roles (P3). Replaces stub/telemetry-init.sh.
+# Telemetry database schema and role initialization.
 #
 # Table and column names are the agreed interface: otel.py writes them, agent/shard.py
 # reads them. Everything here only adds to that shape, so neither has to change.
@@ -139,8 +139,8 @@ GRANT USAGE ON SCHEMA public TO agents;
 GRANT SELECT ON machines, traces, metrics, logs, http_requests, page_views, visitors, log_codes TO agents;
 GRANT EXECUTE ON FUNCTION device_type(TEXT) TO agents;
 
--- Writer for otel.py: insert only, cannot read anything back. Not used yet: the
--- services still connect as the owner until P1 switches TELEMETRY_DSN in compose.
+-- Writer for otel.py: insert only, cannot read anything back. Services use this
+-- role through the telemetry DSN configured in docker-compose.yml.
 CREATE ROLE telemetry_writer LOGIN PASSWORD :'writer_pw';
 GRANT CONNECT ON DATABASE :"db" TO telemetry_writer;
 GRANT USAGE ON SCHEMA public TO telemetry_writer;

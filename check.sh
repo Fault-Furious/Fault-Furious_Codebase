@@ -12,14 +12,14 @@ docker compose exec -T telemetrydb psql -U ${TELEMETRY_USER:-telemetry} -d ${TEL
 SELECT 'trace ' || t.trace_id
      || ' spans=' || (SELECT count(*) FROM traces WHERE trace_id = t.trace_id)
      || ' logs='  || (SELECT count(*) FROM logs WHERE trace_id = t.trace_id)
-     || ' metrics=' || (SELECT count(*) FROM metrics WHERE attrs->>'trace_id' = t.trace_id)
+     || ' metrics=' || (SELECT count(*) FROM metrics WHERE trace_id = t.trace_id)
 FROM traces t JOIN traces c ON c.parent_id = t.span_id
 WHERE t.name = 'POST /login' AND t.attrs->>'username' = '$user';
 SELECT CASE WHEN EXISTS (
   SELECT 1 FROM traces t
   JOIN traces c  ON c.parent_id = t.span_id
   JOIN logs l    ON l.trace_id = t.trace_id
-  JOIN metrics m ON m.attrs->>'trace_id' = t.trace_id
+  JOIN metrics m ON m.trace_id = t.trace_id
   WHERE t.name = 'POST /login' AND t.parent_id IS NULL AND t.attrs->>'username' = '$user'
 ) THEN 'PASS' ELSE 'FAIL' END;
 SQL
